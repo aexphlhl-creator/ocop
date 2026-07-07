@@ -1,19 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
-import { useAuthStore } from '../../../stores/auth.store';
+import { useCurrentUser } from '../../../hooks/use-auth';
 import { Shield, ShoppingBag, Store, Newspaper, Users, BarChart3 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const { user } = useCurrentUser();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || !user) {
+  if (!user) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />

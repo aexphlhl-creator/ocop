@@ -4,18 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
-import { useAuthStore } from '../../../stores/auth.store';
+import { useCurrentUser } from '../../../hooks/use-auth';
 import { User, Mail, Phone, Shield } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const { user } = useCurrentUser();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || !user) {
+  if (!user) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />

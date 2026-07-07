@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import axios from 'axios';
 
 export interface User {
   id: string;
@@ -14,9 +15,11 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   login: (user: User, accessToken: string, refreshToken: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   refresh: (accessToken: string, refreshToken: string) => void;
 }
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 // Helpers đồng bộ Cookie cho Middleware Next.js đọc ở Server side
 function setCookie(name: string, value: string, days = 7) {
@@ -34,7 +37,7 @@ function deleteCookie(name: string) {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
@@ -42,7 +45,15 @@ export const useAuthStore = create<AuthState>()(
         set({ user, accessToken, refreshToken });
         setCookie('ocop-token', accessToken, 7); // Lưu cookie 7 ngày trùng phiên
       },
-      logout: () => {
+      logout: async () => {
+        const token = get().refreshToken;
+        if (token) {
+          try {
+            await axios.post(`${API_URL}/api/v1/auth/logout`, { refreshToken: token });
+          } catch (err) {
+            // Bỏ qua lỗi mạng khi logout
+          }
+        }
         set({ user: null, accessToken: null, refreshToken: null });
         deleteCookie('ocop-token');
       },
