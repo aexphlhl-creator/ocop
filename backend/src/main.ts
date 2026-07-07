@@ -1,9 +1,17 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Sử dụng NestExpressApplication để cấu hình thư mục static assets
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Cấu hình phục vụ file tĩnh (GeoJSON) từ thư mục assets
+  app.useStaticAssets(join(process.cwd(), 'assets'), {
+    prefix: '/assets/',
+  });
 
   // Cấu hình Swagger
   const config = new DocumentBuilder()

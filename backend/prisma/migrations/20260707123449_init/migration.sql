@@ -29,7 +29,8 @@ CREATE TABLE "provinces" (
     "code" TEXT NOT NULL,
     "latitude" DOUBLE PRECISION NOT NULL,
     "longitude" DOUBLE PRECISION NOT NULL,
-    "geojson" JSONB,
+    "geojson_path" TEXT,
+    "bounds" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "provinces_pkey" PRIMARY KEY ("id")
@@ -44,7 +45,8 @@ CREATE TABLE "wards" (
     "longitude" DOUBLE PRECISION NOT NULL,
     "avatar" TEXT,
     "description" TEXT,
-    "geojson" JSONB,
+    "geojson_path" TEXT,
+    "bounds" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "wards_pkey" PRIMARY KEY ("id")
@@ -136,6 +138,9 @@ CREATE UNIQUE INDEX "provinces_name_key" ON "provinces"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "provinces_code_key" ON "provinces"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "wards_province_id_name_key" ON "wards"("province_id", "name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "businesses_tax_code_key" ON "businesses"("tax_code");

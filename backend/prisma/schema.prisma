@@ -38,7 +38,8 @@ model Province {
   code            String     @unique // Mã tỉnh/thành ví dụ: 'HN', 'HCM'
   latitude        Float
   longitude       Float
-  geojson         Json?      // Lưu tọa độ bao phủ của Tỉnh phục vụ vẽ Map
+  geojsonPath     String?    @map("geojson_path") // Đường dẫn đến file GeoJSON tĩnh
+  bounds          Json?      // Bounding box [ [minLat, minLng], [maxLat, maxLng] ]
   wards           Ward[]
   businesses      Business[]
   products        Product[]
@@ -56,11 +57,13 @@ model Ward {
   longitude   Float
   avatar      String?    // Ảnh đại diện xã
   description String?    @db.Text
-  geojson     Json?      // Lưu tọa độ bao phủ của Xã phục vụ vẽ Map
+  geojsonPath String?    @map("geojson_path") // Đường dẫn đến file GeoJSON tĩnh
+  bounds      Json?      // Bounding box [ [minLat, minLng], [maxLat, maxLng] ]
   businesses  Business[]
   products    Product[]
   createdAt   DateTime   @default(now()) @map("created_at")
 
+  @@unique([provinceId, name])
   @@map("wards")
 }
 
