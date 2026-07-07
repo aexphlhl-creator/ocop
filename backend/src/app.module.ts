@@ -9,6 +9,8 @@ import { AuthModule } from './features/auth/auth.module';
 import { ProvincesModule } from './features/provinces/provinces.module';
 import { WardsModule } from './features/wards/wards.module';
 import { ProductsModule } from './features/products/products.module';
+import { BusinessesModule } from './features/businesses/businesses.module';
+import { MediaModule } from './features/media/media.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { ProductsModule } from './features/products/products.module';
     ProvincesModule,
     WardsModule,
     ProductsModule,
+    BusinessesModule,
+    MediaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
