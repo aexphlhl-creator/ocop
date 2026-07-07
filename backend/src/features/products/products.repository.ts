@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, ProductStatus } from '@prisma/client';
+import { Prisma, ProductStatus, RoleName } from '@prisma/client';
 
 @Injectable()
 export class ProductsRepository {
@@ -9,26 +9,101 @@ export class ProductsRepository {
   async findAndCount(params: {
     skip: number;
     take: number;
+    search?: string;
     categoryId?: string;
     provinceId?: string;
+    wardId?: string;
+    businessId?: string;
     ocopLevelId?: string;
     status?: ProductStatus;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    userContext?: { id: string; role: RoleName } | null;
   }) {
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
     };
 
+    // 1. Tìm kiếm theo từ khóa (name hoặc description)
+    if (params.search) {
+      where.OR = [
+        { name: { contains: params.search, mode: 'insensitive' } },
+        { description: { contains: params.search, mode: 'insensitive' } },
+      ];
+    }
+
+    // 2. Bộ lọc khóa ngoại
     if (params.categoryId) {
       where.categoryId = params.categoryId;
     }
     if (params.provinceId) {
       where.provinceId = params.provinceId;
     }
+    if (params.wardId) {
+      where.wardId = params.wardId;
+    }
+    if (params.businessId) {
+      where.businessId = params.businessId;
+    }
     if (params.ocopLevelId) {
       where.ocopLevelId = params.ocopLevelId;
     }
-    if (params.status) {
-      where.status = params.status;
+
+    // 3. Bộ lọc khoảng giá
+    if (params.minPrice !== undefined || params.maxPrice !== undefined) {
+      where.price = {};
+      if (params.minPrice !== undefined) {
+        where.price.gte = params.minPrice;
+      }
+      if (params.maxPrice !== undefined) {
+        where.price.lte = params.maxPrice;
+      }
+    }
+
+    // 4. Quyền hiển thị của các vai trò (Visibility / RBAC)
+    const role = params.userContext?.role;
+    const userId = params.userContext?.id;
+
+    if (!role || role === RoleName.VISITOR) {
+      // Visitor chỉ nhìn thấy APPROVED
+      where.status = ProductStatus.APPROVED;
+    } else if (role === RoleName.SELLER) {
+      // Seller xem được APPROVED toàn hệ thống, hoặc PENDING/REJECTED của chính mình
+      const statusFilter = params.status;
+      if (statusFilter) {
+        if (statusFilter === ProductStatus.APPROVED) {
+          where.status = ProductStatus.APPROVED;
+        } else {
+          where.status = statusFilter;
+          where.business = { userId };
+        }
+      } else {
+        where.OR = [
+          ...(where.OR || []),
+          { status: ProductStatus.APPROVED },
+          { business: { userId } },
+        ];
+      }
+    } else if (role === RoleName.ADMIN) {
+      // Admin xem được tất cả trạng thái
+      if (params.status) {
+        where.status = params.status;
+      }
+    }
+
+    // 5. Cấu hình sắp xếp
+    const sortBy = params.sortBy || 'createdAt';
+    const sortOrder = params.sortOrder || 'desc';
+    const orderBy: Prisma.ProductOrderByWithRelationInput = {};
+
+    if (sortBy === 'price') {
+      orderBy.price = sortOrder;
+    } else if (sortBy === 'name') {
+      orderBy.name = sortOrder;
+    } else {
+      orderBy.createdAt = sortOrder;
     }
 
     const [items, total] = await Promise.all([
@@ -36,7 +111,7 @@ export class ProductsRepository {
         where,
         skip: params.skip,
         take: params.take,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           category: true,
           ocopLevel: true,
@@ -59,6 +134,39 @@ export class ProductsRepository {
               name: true,
             },
           },
+          images: true,
+        },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  async findSellerProductsAndCount(params: {
+    sellerId: string;
+    skip: number;
+    take: number;
+  }) {
+    const where: Prisma.ProductWhereInput = {
+      deletedAt: null,
+      business: {
+        userId: params.sellerId,
+      },
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        skip: params.skip,
+        take: params.take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          category: true,
+          ocopLevel: true,
+          business: true,
+          province: true,
+          ward: true,
           images: true,
         },
       }),
@@ -158,6 +266,38 @@ export class ProductsRepository {
         business: true,
         images: true,
       },
+    });
+  }
+
+  async approveProduct(params: {
+    productId: string;
+    adminId: string;
+    oldStatus: ProductStatus;
+    newStatus: ProductStatus;
+    reason?: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const product = await tx.product.update({
+        where: { id: params.productId },
+        data: {
+          status: params.newStatus,
+          approvedAt: params.newStatus === ProductStatus.APPROVED ? new Date() : null,
+          approvedById: params.newStatus === ProductStatus.APPROVED ? params.adminId : null,
+          rejectReason: params.newStatus === ProductStatus.REJECTED ? params.reason || null : null,
+        },
+      });
+
+      await tx.productApprovalHistory.create({
+        data: {
+          productId: params.productId,
+          adminId: params.adminId,
+          oldStatus: params.oldStatus,
+          newStatus: params.newStatus,
+          reason: params.reason || null,
+        },
+      });
+
+      return product;
     });
   }
 
