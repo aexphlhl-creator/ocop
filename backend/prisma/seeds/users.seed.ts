@@ -1,12 +1,12 @@
-import { PrismaClient, Role, User } from '@prisma/client';
+import { PrismaClient, Role, RoleName, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 export async function seedUsers(
   prisma: PrismaClient,
   rolesMap: Record<string, Role>
 ): Promise<Record<string, User>> {
-  const adminRole = rolesMap['ADMIN'];
-  const sellerRole = rolesMap['SELLER'];
+  const adminRole = rolesMap[RoleName.ADMIN];
+  const sellerRole = rolesMap[RoleName.SELLER];
 
   if (!adminRole || !sellerRole) {
     throw new Error('Missing required roles for seeding users');

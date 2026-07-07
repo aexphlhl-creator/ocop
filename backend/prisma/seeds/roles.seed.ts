@@ -1,10 +1,10 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient, Role, RoleName } from '@prisma/client';
 
 export async function seedRoles(prisma: PrismaClient): Promise<Record<string, Role>> {
   const rolesData = [
-    { name: 'ADMIN', description: 'Quản trị viên hệ thống' },
-    { name: 'SELLER', description: 'Chủ thể doanh nghiệp sản xuất OCOP' },
-    { name: 'VISITOR', description: 'Người dùng xem bản đồ công cộng' },
+    { name: RoleName.ADMIN, description: 'Quản trị viên hệ thống' },
+    { name: RoleName.SELLER, description: 'Chủ thể doanh nghiệp sản xuất OCOP' },
+    { name: RoleName.VISITOR, description: 'Người dùng xem bản đồ công cộng' },
   ];
 
   const rolesMap: Record<string, Role> = {};

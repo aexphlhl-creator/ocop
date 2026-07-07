@@ -11,6 +11,7 @@ import { seedBusinesses } from './seeds/businesses.seed';
 import { seedCategories } from './seeds/categories.seed';
 import { seedProducts } from './seeds/products.seed';
 import { seedNews } from './seeds/news.seed';
+import { seedOcopLevels } from './seeds/ocop-levels.seed';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -20,14 +21,17 @@ async function main() {
   console.log('Starting execution of database seeding...\n');
 
   try {
-    // 1. Seed Categories & Provinces (Prerequisites)
+    // 1. Seed Prerequisites
     const provinces = await seedProvinces(prisma);
     console.log('✓ Provinces seeded (34)');
 
     const categories = await seedCategories(prisma);
     console.log(`✓ Categories seeded (${Object.keys(categories).length})`);
 
-    // 2. Seed Wards (Prerequisite)
+    const ocopLevels = await seedOcopLevels(prisma);
+    console.log(`✓ OCOP Levels seeded (${Object.keys(ocopLevels).length})`);
+
+    // 2. Seed Wards
     const wards = await seedWards(prisma, provinces);
     console.log(`✓ Wards seeded (${Object.keys(wards).length})`);
 
@@ -44,7 +48,7 @@ async function main() {
       const businesses = await seedBusinesses(tx as any, users, provinces, wards);
       businessCount = Object.keys(businesses).length;
 
-      productCount = await seedProducts(tx as any, categories, businesses, provinces, wards);
+      productCount = await seedProducts(tx as any, categories, businesses, provinces, wards, ocopLevels);
     });
 
     console.log('✓ Roles seeded');

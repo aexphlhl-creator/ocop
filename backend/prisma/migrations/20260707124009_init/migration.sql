@@ -1,9 +1,19 @@
+-- CreateEnum
+CREATE TYPE "RoleName" AS ENUM ('ADMIN', 'SELLER', 'VISITOR');
+
+-- CreateEnum
+CREATE TYPE "ProductStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+
+-- CreateEnum
+CREATE TYPE "NewsStatus" AS ENUM ('DRAFT', 'PUBLISHED');
+
 -- CreateTable
 CREATE TABLE "roles" (
     "id" UUID NOT NULL,
-    "name" TEXT NOT NULL,
+    "name" "RoleName" NOT NULL,
     "description" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "roles_pkey" PRIMARY KEY ("id")
 );
@@ -18,6 +28,7 @@ CREATE TABLE "users" (
     "role_id" UUID NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
@@ -32,6 +43,7 @@ CREATE TABLE "provinces" (
     "geojson_path" TEXT,
     "bounds" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "provinces_pkey" PRIMARY KEY ("id")
 );
@@ -48,6 +60,7 @@ CREATE TABLE "wards" (
     "geojson_path" TEXT,
     "bounds" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "wards_pkey" PRIMARY KEY ("id")
 );
@@ -65,6 +78,8 @@ CREATE TABLE "businesses" (
     "province_id" UUID NOT NULL,
     "is_verified" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "businesses_pkey" PRIMARY KEY ("id")
 );
@@ -76,8 +91,22 @@ CREATE TABLE "categories" (
     "slug" TEXT NOT NULL,
     "description" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "categories_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ocop_levels" (
+    "id" UUID NOT NULL,
+    "level" INTEGER NOT NULL,
+    "title" TEXT NOT NULL,
+    "icon" TEXT,
+    "color" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ocop_levels_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -88,16 +117,18 @@ CREATE TABLE "products" (
     "description" TEXT NOT NULL,
     "price" DECIMAL(12,2) NOT NULL,
     "unit" TEXT NOT NULL,
-    "ocop_level" INTEGER NOT NULL,
+    "ocop_level_id" UUID NOT NULL,
     "category_id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
     "ward_id" UUID NOT NULL,
     "province_id" UUID NOT NULL,
     "latitude" DOUBLE PRECISION NOT NULL,
     "longitude" DOUBLE PRECISION NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "status" "ProductStatus" NOT NULL DEFAULT 'PENDING',
     "video_url" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "products_pkey" PRIMARY KEY ("id")
 );
@@ -109,6 +140,7 @@ CREATE TABLE "product_images" (
     "image_url" TEXT NOT NULL,
     "is_primary" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
 );
@@ -121,8 +153,10 @@ CREATE TABLE "news" (
     "content" TEXT NOT NULL,
     "thumbnail" TEXT NOT NULL,
     "author_id" UUID NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "status" "NewsStatus" NOT NULL DEFAULT 'DRAFT',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "news_pkey" PRIMARY KEY ("id")
 );
@@ -140,10 +174,22 @@ CREATE UNIQUE INDEX "provinces_name_key" ON "provinces"("name");
 CREATE UNIQUE INDEX "provinces_code_key" ON "provinces"("code");
 
 -- CreateIndex
+CREATE INDEX "wards_province_id_idx" ON "wards"("province_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "wards_province_id_name_key" ON "wards"("province_id", "name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "businesses_tax_code_key" ON "businesses"("tax_code");
+
+-- CreateIndex
+CREATE INDEX "businesses_user_id_idx" ON "businesses"("user_id");
+
+-- CreateIndex
+CREATE INDEX "businesses_ward_id_idx" ON "businesses"("ward_id");
+
+-- CreateIndex
+CREATE INDEX "businesses_province_id_idx" ON "businesses"("province_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "categories_name_key" ON "categories"("name");
@@ -152,10 +198,40 @@ CREATE UNIQUE INDEX "categories_name_key" ON "categories"("name");
 CREATE UNIQUE INDEX "categories_slug_key" ON "categories"("slug");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ocop_levels_level_key" ON "ocop_levels"("level");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "products_slug_key" ON "products"("slug");
 
 -- CreateIndex
+CREATE INDEX "products_ocop_level_id_idx" ON "products"("ocop_level_id");
+
+-- CreateIndex
+CREATE INDEX "products_category_id_idx" ON "products"("category_id");
+
+-- CreateIndex
+CREATE INDEX "products_business_id_idx" ON "products"("business_id");
+
+-- CreateIndex
+CREATE INDEX "products_ward_id_idx" ON "products"("ward_id");
+
+-- CreateIndex
+CREATE INDEX "products_province_id_idx" ON "products"("province_id");
+
+-- CreateIndex
+CREATE INDEX "products_status_idx" ON "products"("status");
+
+-- CreateIndex
+CREATE INDEX "product_images_product_id_idx" ON "product_images"("product_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "news_slug_key" ON "news"("slug");
+
+-- CreateIndex
+CREATE INDEX "news_author_id_idx" ON "news"("author_id");
+
+-- CreateIndex
+CREATE INDEX "news_status_idx" ON "news"("status");
 
 -- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "users_role_id_fkey" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -171,6 +247,9 @@ ALTER TABLE "businesses" ADD CONSTRAINT "businesses_ward_id_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "businesses" ADD CONSTRAINT "businesses_province_id_fkey" FOREIGN KEY ("province_id") REFERENCES "provinces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "products" ADD CONSTRAINT "products_ocop_level_id_fkey" FOREIGN KEY ("ocop_level_id") REFERENCES "ocop_levels"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "products" ADD CONSTRAINT "products_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -1,11 +1,12 @@
-import { PrismaClient, Category, Business, Province, Ward } from '@prisma/client';
+import { PrismaClient, Category, Business, Province, Ward, OcopLevel, ProductStatus } from '@prisma/client';
 
 export async function seedProducts(
   prisma: PrismaClient,
   categoriesMap: Record<string, Category>,
   businessesMap: Record<string, Business>,
   provincesMap: Record<string, Province>,
-  wardsMap: Record<string, Ward>
+  wardsMap: Record<string, Ward>,
+  ocopLevelsMap: Record<number, OcopLevel>
 ): Promise<number> {
   const productsData = [
     {
@@ -21,7 +22,7 @@ export async function seedProducts(
       provinceName: 'Hà Nội',
       lat: 20.973,
       lon: 105.909,
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
       image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
     },
     {
@@ -37,7 +38,7 @@ export async function seedProducts(
       provinceName: 'Phú Thọ',
       lat: 21.353,
       lon: 105.379,
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
       image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=600&q=80',
     },
     {
@@ -53,7 +54,7 @@ export async function seedProducts(
       provinceName: 'Lâm Đồng',
       lat: 11.933,
       lon: 108.524,
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
       image: 'https://images.unsplash.com/photo-1601004890684-d8cbf643f5f2?auto=format&fit=crop&w=600&q=80',
     },
     {
@@ -69,7 +70,7 @@ export async function seedProducts(
       provinceName: 'Lâm Đồng',
       lat: 11.840,
       lon: 108.562,
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
       image: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?auto=format&fit=crop&w=600&q=80',
     },
     {
@@ -85,7 +86,7 @@ export async function seedProducts(
       provinceName: 'TP. Hồ Chí Minh',
       lat: 10.451,
       lon: 106.830,
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
       image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=600&q=80',
     },
   ];
@@ -96,6 +97,7 @@ export async function seedProducts(
     const business = businessesMap[prod.businessName];
     const ward = wardsMap[prod.wardKey];
     const prov = provincesMap[prod.provinceName];
+    const ocopLevelObj = ocopLevelsMap[prod.ocopLevel];
 
     if (!category) {
       throw new Error(`Missing category reference "${prod.categoryName}" for product "${prod.name}"`);
@@ -109,6 +111,9 @@ export async function seedProducts(
     if (!prov) {
       throw new Error(`Missing province reference "${prod.provinceName}" for product "${prod.name}"`);
     }
+    if (!ocopLevelObj) {
+      throw new Error(`Missing OCOP level reference ${prod.ocopLevel} for product "${prod.name}"`);
+    }
 
     const upsertedProduct = await prisma.product.upsert({
       where: { slug: prod.slug },
@@ -117,7 +122,7 @@ export async function seedProducts(
         description: prod.description,
         price: prod.price,
         unit: prod.unit,
-        ocopLevel: prod.ocopLevel,
+        ocopLevelId: ocopLevelObj.id,
         categoryId: category.id,
         businessId: business.id,
         wardId: ward.id,
@@ -132,7 +137,7 @@ export async function seedProducts(
         description: prod.description,
         price: prod.price,
         unit: prod.unit,
-        ocopLevel: prod.ocopLevel,
+        ocopLevelId: ocopLevelObj.id,
         categoryId: category.id,
         businessId: business.id,
         wardId: ward.id,

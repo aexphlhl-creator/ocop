@@ -6,12 +6,38 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum RoleName {
+  ADMIN
+  SELLER
+  VISITOR
+}
+
+enum ProductStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
 model Role {
   id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique // ADMIN, SELLER, VISITOR
+  name        RoleName @unique
   description String?
   users       User[]
   createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("roles")
 }
@@ -28,6 +54,7 @@ model User {
   businesses   Business[]
   news         News[]
   createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
 
   @@map("users")
 }
@@ -35,15 +62,16 @@ model User {
 model Province {
   id              String     @id @default(uuid()) @db.Uuid
   name            String     @unique
-  code            String     @unique // Mã tỉnh/thành ví dụ: 'HN', 'HCM'
+  code            String     @unique // Mã hành chính chính thức (ví dụ: '01', '79')
   latitude        Float
   longitude       Float
-  geojsonPath     String?    @map("geojson_path") // Đường dẫn đến file GeoJSON tĩnh
-  bounds          Json?      // Bounding box [ [minLat, minLng], [maxLat, maxLng] ]
+  geojsonPath     String?    @map("geojson_path")
+  bounds          Json?
   wards           Ward[]
   businesses      Business[]
   products        Product[]
   createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
   @@map("provinces")
 }
@@ -57,13 +85,15 @@ model Ward {
   longitude   Float
   avatar      String?    // Ảnh đại diện xã
   description String?    @db.Text
-  geojsonPath String?    @map("geojson_path") // Đường dẫn đến file GeoJSON tĩnh
-  bounds      Json?      // Bounding box [ [minLat, minLng], [maxLat, maxLng] ]
+  geojsonPath String?    @map("geojson_path")
+  bounds      Json?
   businesses  Business[]
   products    Product[]
   createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   @@unique([provinceId, name])
+  @@index([provinceId])
   @@map("wards")
 }
 
@@ -83,7 +113,12 @@ model Business {
   isVerified Boolean   @default(false) @map("is_verified")
   products   Product[]
   createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
+  @@index([userId])
+  @@index([wardId])
+  @@index([provinceId])
   @@map("businesses")
 }
 
@@ -94,8 +129,22 @@ model Category {
   description String?   @db.Text
   products    Product[]
   createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("categories")
+}
+
+model OcopLevel {
+  id        String    @id @default(uuid()) @db.Uuid
+  level     Int       @unique // 3, 4, 5
+  title     String    // 3 Sao, 4 Sao, 5 Sao
+  icon      String?
+  color     String?
+  products  Product[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("ocop_levels")
 }
 
 model Product {
@@ -105,7 +154,8 @@ model Product {
   description String         @db.Text
   price       Decimal        @db.Decimal(12, 2)
   unit        String         // Ví dụ: Hộp, Gói, Kg...
-  ocopLevel   Int            @map("ocop_level") // 3, 4, 5 sao
+  ocopLevelId String         @db.Uuid @map("ocop_level_id")
+  ocopLevel   OcopLevel      @relation(fields: [ocopLevelId], references: [id])
   categoryId  String         @db.Uuid @map("category_id")
   category    Category       @relation(fields: [categoryId], references: [id])
   businessId  String         @db.Uuid @map("business_id")
@@ -116,11 +166,19 @@ model Product {
   province    Province       @relation(fields: [provinceId], references: [id])
   latitude    Float
   longitude   Float
-  status      String         @default("PENDING") // PENDING, APPROVED, REJECTED
+  status      ProductStatus  @default(PENDING)
   videoUrl    String?        @map("video_url")
   images      ProductImage[]
   createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
 
+  @@index([ocopLevelId])
+  @@index([categoryId])
+  @@index([businessId])
+  @@index([wardId])
+  @@index([provinceId])
+  @@index([status])
   @@map("products")
 }
 
@@ -131,20 +189,26 @@ model ProductImage {
   imageUrl  String   @map("image_url")
   isPrimary Boolean  @default(false) @map("is_primary")
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([productId])
   @@map("product_images")
 }
 
 model News {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String     @id @default(uuid()) @db.Uuid
   title     String
-  slug      String   @unique
-  content   String   @db.Text
+  slug      String     @unique
+  content   String     @db.Text
   thumbnail String
-  authorId  String   @db.Uuid @map("author_id")
-  author    User     @relation(fields: [authorId], references: [id])
-  status    String   @default("DRAFT") // DRAFT, PUBLISHED
-  createdAt DateTime @default(now()) @map("created_at")
+  authorId  String     @db.Uuid @map("author_id")
+  author    User       @relation(fields: [authorId], references: [id])
+  status    NewsStatus @default(DRAFT)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  deletedAt DateTime?  @map("deleted_at")
 
+  @@index([authorId])
+  @@index([status])
   @@map("news")
 }
