@@ -10,6 +10,8 @@ import { RedisModule } from './features/redis/redis.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      cache: true,
+      expandVariables: true,
       validate,
     }),
     PrismaModule,

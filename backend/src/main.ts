@@ -3,12 +3,13 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Phục vụ static assets (GeoJSON, media)
@@ -22,6 +23,9 @@ async function bootstrap() {
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
@@ -41,11 +45,15 @@ async function bootstrap() {
     .build();
   
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true, // Lưu token đăng nhập khi refresh trang
+    },
+  });
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`Backend is running on: http://localhost:${port}`);
-  console.log(`Swagger UI is accessible at: http://localhost:${port}/api/docs`);
+  logger.log(`Backend is running on: http://localhost:${port}`);
+  logger.log(`Swagger UI is accessible at: http://localhost:${port}/api/docs`);
 }
 bootstrap();
