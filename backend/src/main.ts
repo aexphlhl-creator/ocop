@@ -3,15 +3,34 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { ValidationPipe } from '@nestjs/common';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  // Sử dụng NestExpressApplication để cấu hình thư mục static assets
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Cấu hình phục vụ file tĩnh (GeoJSON) từ thư mục assets
+  // Phục vụ static assets (GeoJSON, media)
   app.useStaticAssets(join(process.cwd(), 'assets'), {
     prefix: '/assets/',
   });
+
+  // Global Validation Pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
+
+  // Global Exception Filter
+  app.useGlobalFilters(new HttpExceptionFilter());
+
+  // Global Interceptors
+  app.useGlobalInterceptors(new TransformInterceptor());
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   // Cấu hình Swagger
   const config = new DocumentBuilder()
