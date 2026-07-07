@@ -6,6 +6,8 @@ import { validate } from './config/env.validation';
 import { PrismaModule } from './features/prisma/prisma.module';
 import { RedisModule } from './features/redis/redis.module';
 import { AuthModule } from './features/auth/auth.module';
+import { ProvincesModule } from './features/provinces/provinces.module';
+import { WardsModule } from './features/wards/wards.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { AuthModule } from './features/auth/auth.module';
     PrismaModule,
     RedisModule,
     AuthModule,
+    ProvincesModule,
+    WardsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
