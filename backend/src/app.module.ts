@@ -11,6 +11,9 @@ import { WardsModule } from './features/wards/wards.module';
 import { ProductsModule } from './features/products/products.module';
 import { BusinessesModule } from './features/businesses/businesses.module';
 import { MediaModule } from './features/media/media.module';
+import { NewsModule } from './features/news/news.module';
+import { DashboardModule } from './features/dashboard/dashboard.module';
+import { StatisticsModule } from './features/statistics/statistics.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { MediaModule } from './features/media/media.module';
     ProductsModule,
     BusinessesModule,
     MediaModule,
+    NewsModule,
+    DashboardModule,
+    StatisticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

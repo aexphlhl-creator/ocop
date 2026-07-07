@@ -148,8 +148,11 @@ export class BusinessesService {
     try {
       const client = this.redisService.getClient();
       const keys = await client.keys('businesses:list:*');
-      if (keys.length > 0) {
-        await client.del(...keys);
+      const dashboardKeys = await client.keys('dashboard:*');
+      const statsKeys = await client.keys('statistics:*');
+      const allKeys = [...keys, ...dashboardKeys, ...statsKeys];
+      if (allKeys.length > 0) {
+        await client.del(...allKeys);
       }
     } catch {
       // Bỏ qua lỗi Redis
