@@ -1,7 +1,11 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../stores/auth.store';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error('Production API configuration error: NEXT_PUBLIC_API_URL is required.');
+}
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_URL,

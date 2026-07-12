@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min, IsDateString } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'Bột cacao nguyên chất Cầu Đất', description: 'Tên sản phẩm OCOP' })
@@ -59,4 +59,35 @@ export class CreateProductDto {
   @IsString({ each: true })
   @IsOptional()
   imageUrls?: string[];
+
+  // Traceability Fields
+  @ApiPropertyOptional({ example: 'Vùng trồng tại Cam Lâm...', description: 'Mô tả nguồn gốc nguyên liệu' })
+  @IsString()
+  @IsOptional()
+  originProcess?: string;
+
+  @ApiPropertyOptional({ example: 'Canh tác theo chuẩn VietGAP...', description: 'Mô tả quy trình chăm sóc / tiêu chuẩn' })
+  @IsString()
+  @IsOptional()
+  farmingProcess?: string;
+
+  @ApiPropertyOptional({ example: 'Thu hoạch sáng sớm, sơ chế sạch...', description: 'Mô tả quy trình thu hoạch & sơ chế' })
+  @IsString()
+  @IsOptional()
+  harvestProcess?: string;
+
+  @ApiPropertyOptional({ example: 'Đóng gói hút chân không...', description: 'Mô tả quy trình đóng gói' })
+  @IsString()
+  @IsOptional()
+  packagingProcess?: string;
+
+  @ApiPropertyOptional({ example: 'VSATTP-01/2026', description: 'Số giấy phép VSATTP / OCOP' })
+  @IsString()
+  @IsOptional()
+  certificateNumber?: string;
+
+  @ApiPropertyOptional({ example: '2026-07-08T00:00:00Z', description: 'Ngày thu hoạch / Sản xuất dự kiến' })
+  @IsDateString({}, { message: 'harvestDate phải là định dạng ngày tháng hợp lệ' })
+  @IsOptional()
+  harvestDate?: string;
 }

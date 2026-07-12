@@ -1,26 +1,255 @@
 @import "tailwindcss";
 
+/* ============================================================
+   DESIGN TOKENS (Premium Organic Agriculture)
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Color Primitives */
+  --color-primary:   #10B981;
+  --color-primary-hover: #059669;
+  --color-primary-light: #D1FAE5;
+  --color-accent:    #F59E0B;
+  --color-accent-light: #FEF3C7;
+
+  /* Semantic Colors */
+  --background:      #FAFAF8;
+  --foreground:      #1C2E20;
+  --surface:         #FFFFFF;
+  --surface-hover:   #F3F4F6;
+  --border:          #E5E7EB;
+  --border-strong:   #D1D5DB;
+  --muted:           #6B7280;
+  --muted-bg:        #F3F4F6;
+
+  /* Status */
+  --success:         #059669;
+  --success-bg:      #D1FAE5;
+  --warning:         #D97706;
+  --warning-bg:      #FEF3C7;
+  --error:           #DC2626;
+  --error-bg:        #FEE2E2;
+  --info:            #2563EB;
+  --info-bg:         #DBEAFE;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+
+  /* Soft Organic Shadows */
+  --shadow-xs: 0 2px 4px rgba(0,0,0,0.02);
+  --shadow-sm: 0 4px 12px rgba(0,0,0,0.04);
+  --shadow-md: 0 10px 25px -5px rgba(0,0,0,0.05);
+  --shadow-lg: 0 20px 40px -10px rgba(0,0,0,0.08);
+  --shadow-xl: 0 30px 60px -15px rgba(0,0,0,0.1);
+
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
 }
 
+/* Dark Mode (Forest Night) */
+.dark {
+  --background:      #0F1712;
+  --foreground:      #FAFAF8;
+  --surface:         #152018;
+  --surface-hover:   #1C2E20;
+  --border:          #2A3F2D;
+  --border-strong:   #334155;
+  --muted:           #94A3B8;
+  --muted-bg:        #0F172A;
+
+  --success-bg:      rgba(22, 163, 74, 0.1);
+  --warning-bg:      rgba(217, 119, 6, 0.1);
+  --error-bg:        rgba(220, 38, 38, 0.1);
+  --info-bg:         rgba(37, 99, 235, 0.1);
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.2);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.2);
+}
+
+/* ============================================================
+   TAILWIND THEME INLINE OVERRIDES
+   ============================================================ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-primary: var(--color-primary);
+  --font-sans: var(--font-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
+  font-family: var(--font-sans);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Better focus rings */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Selection color */
+::selection {
+  background-color: #DCFCE7;
+  color: #14532D;
+}
+.dark ::selection {
+  background-color: rgba(22, 163, 74, 0.25);
+  color: #BBFAD5;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ============================================================
+   ANIMATION UTILITIES
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+.animate-fade-in  { animation: fadeIn  0.2s ease-out both; }
+.animate-slide-up { animation: slideUp 0.25s ease-out both; }
+.animate-slide-down { animation: slideDown 0.2s ease-out both; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out both; }
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+.dark .skeleton {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ============================================================
+   CUSTOM EFFECTS FOR HOMEPAGE REDESIGN
+   ============================================================ */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.text-gradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 6s ease-in-out 3s infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-15px); }
+  100% { transform: translateY(0px); }
+}
+
+.glow-border {
+  position: relative;
+}
+.glow-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(45deg, #10b981, #3b82f6, #10b981);
+  background-size: 200% auto;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  animation: gradientFlow 3s linear infinite;
+}
+.glow-border:hover::before {
+  opacity: 1;
+}
+
+@keyframes gradientFlow {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
 }

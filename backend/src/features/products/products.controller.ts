@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards , ParseUUIDPipe} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -54,11 +54,20 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy thông tin chi tiết một sản phẩm OCOP theo ID' })
   @ApiResponse({ status: 200, description: 'Thông tin chi tiết của sản phẩm' })
   @ApiResponse({ status: 404, description: 'Sản phẩm không tồn tại hoặc đã bị xóa' })
-  async findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser | null) {
+    return this.productsService.findOne(id, user);
+  }
+
+  @Patch(':id/view')
+  @ApiOperation({ summary: 'Tăng số lượt xem của sản phẩm' })
+  @ApiResponse({ status: 200, description: 'Thành công' })
+  async incrementView(@Param('id', ParseUUIDPipe) id: string) {
+    return this.productsService.incrementViewCount(id);
   }
 
   @Patch(':id')
@@ -71,7 +80,7 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'Không sở hữu sản phẩm này' })
   @ApiResponse({ status: 404, description: 'Sản phẩm không tồn tại' })
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
     @CurrentUser() user: RequestUser,
   ) {
@@ -89,7 +98,7 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'Không phải tài khoản ADMIN' })
   @ApiResponse({ status: 404, description: 'Sản phẩm không tồn tại' })
   async approve(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ApproveProductDto,
     @CurrentUser() user: RequestUser,
   ) {
@@ -105,7 +114,7 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không sở hữu sản phẩm này' })
   @ApiResponse({ status: 404, description: 'Sản phẩm không tồn tại' })
-  async remove(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
     return this.productsService.remove(id, user);
   }
 }

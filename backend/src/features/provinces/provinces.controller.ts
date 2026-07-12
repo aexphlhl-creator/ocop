@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param , ParseUUIDPipe} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProvincesService } from './provinces.service';
 
@@ -18,7 +18,7 @@ export class ProvincesController {
   @ApiOperation({ summary: 'Lấy thông tin chi tiết của một tỉnh/thành phố kèm số lượng xã' })
   @ApiResponse({ status: 200, description: 'Thông tin chi tiết và số lượng xã trực thuộc' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy tỉnh/thành phố' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.provincesService.findOne(id);
   }
 

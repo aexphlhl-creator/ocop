@@ -8,6 +8,8 @@ import { RequestUser } from '../auth/interfaces/jwt-payload.interface';
 import { RedisService } from '../redis/redis.service';
 import { RoleName, ProductStatus } from '@prisma/client';
 import { createPaginationResponse } from '../../common/pagination/pagination.helper';
+import { NotificationsService } from '../notifications/notifications.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
 
 @Injectable()
 export class ProductsService {
@@ -16,6 +18,8 @@ export class ProductsService {
   constructor(
     private readonly productsRepository: ProductsRepository,
     private readonly redisService: RedisService,
+    private readonly notificationsService: NotificationsService,
+    private readonly blockchainService: BlockchainService,
   ) {}
 
   async create(dto: CreateProductDto, currentUser: RequestUser) {
@@ -44,6 +48,12 @@ export class ProductsService {
       latitude: dto.latitude,
       longitude: dto.longitude,
       videoUrl: dto.videoUrl || null,
+      originProcess: dto.originProcess || null,
+      farmingProcess: dto.farmingProcess || null,
+      harvestProcess: dto.harvestProcess || null,
+      packagingProcess: dto.packagingProcess || null,
+      certificateNumber: dto.certificateNumber || null,
+      harvestDate: dto.harvestDate ? new Date(dto.harvestDate) : null,
       status,
       category: { connect: { id: dto.categoryId } },
       ocopLevel: { connect: { id: dto.ocopLevelId } },
@@ -52,8 +62,29 @@ export class ProductsService {
       ward: { connect: { id: dto.wardId } },
     };
 
-    const product = await this.productsRepository.create(productInput, dto.imageUrls);
+    const imageUrls = dto.imageUrls?.slice(0, 10) || [];
+
+    const product = await this.productsRepository.create(productInput, imageUrls);
     await this.clearProductListCache();
+    
+    // Ghi Blockchain cho Sản phẩm mới (nếu có truy xuất nguồn gốc)
+    const p = product as any;
+    if (p.originProcess || p.farmingProcess || p.harvestProcess || p.packagingProcess || p.certificateNumber) {
+      await this.blockchainService.createBlock(product.id, 'PRODUCT_CREATED', {
+        originProcess: p.originProcess,
+        farmingProcess: p.farmingProcess,
+        harvestProcess: p.harvestProcess,
+        packagingProcess: p.packagingProcess,
+        certificateNumber: p.certificateNumber,
+        harvestDate: p.harvestDate,
+      });
+    }
+    
+    // Gửi thông báo
+    if (currentUser.role === RoleName.SELLER && product.business) {
+      await this.notificationsService.notifyAdminsNewProduct(product.name, product.business.name, product.id);
+    }
+    
     return product;
   }
 
@@ -121,11 +152,21 @@ export class ProductsService {
     return createPaginationResponse(items, total, page, limit);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, currentUser?: RequestUser | null) {
     const product = await this.productsRepository.findById(id);
     if (!product) {
       throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
     }
+
+    if (product.status !== ProductStatus.APPROVED) {
+      if (!currentUser) {
+        throw new ForbiddenException('Bạn không có quyền xem sản phẩm này');
+      }
+      if (currentUser.role === RoleName.SELLER && product.business?.userId !== currentUser.id) {
+        throw new ForbiddenException('Bạn không có quyền xem sản phẩm này');
+      }
+    }
+
     return product;
   }
 
@@ -174,6 +215,12 @@ export class ProductsService {
       latitude: dto.latitude,
       longitude: dto.longitude,
       videoUrl: dto.videoUrl || null,
+      originProcess: dto.originProcess !== undefined ? dto.originProcess : undefined,
+      farmingProcess: dto.farmingProcess !== undefined ? dto.farmingProcess : undefined,
+      harvestProcess: dto.harvestProcess !== undefined ? dto.harvestProcess : undefined,
+      packagingProcess: dto.packagingProcess !== undefined ? dto.packagingProcess : undefined,
+      certificateNumber: dto.certificateNumber !== undefined ? dto.certificateNumber : undefined,
+      harvestDate: dto.harvestDate !== undefined ? (dto.harvestDate ? new Date(dto.harvestDate) : null) : undefined,
       status,
       category: dto.categoryId ? { connect: { id: dto.categoryId } } : undefined,
       ocopLevel: dto.ocopLevelId ? { connect: { id: dto.ocopLevelId } } : undefined,
@@ -182,8 +229,33 @@ export class ProductsService {
       ward: dto.wardId ? { connect: { id: dto.wardId } } : undefined,
     };
 
-    const product = await this.productsRepository.update(id, updateInputData, dto.imageUrls);
+    const imageUrls = dto.imageUrls?.slice(0, 10) || [];
+
+    const product = await this.productsRepository.update(id, updateInputData, imageUrls);
     await this.clearProductListCache();
+
+    // Ghi Blockchain khi cập nhật dữ liệu truy xuất nguồn gốc
+    const ex = existing as any;
+    const hasTraceabilityChanges = 
+      (dto.originProcess !== undefined && dto.originProcess !== ex.originProcess) ||
+      (dto.farmingProcess !== undefined && dto.farmingProcess !== ex.farmingProcess) ||
+      (dto.harvestProcess !== undefined && dto.harvestProcess !== ex.harvestProcess) ||
+      (dto.packagingProcess !== undefined && dto.packagingProcess !== ex.packagingProcess) ||
+      (dto.certificateNumber !== undefined && dto.certificateNumber !== ex.certificateNumber) ||
+      (dto.harvestDate !== undefined);
+
+    if (hasTraceabilityChanges) {
+      const up = product as any;
+      await this.blockchainService.createBlock(product.id, 'TRACEABILITY_UPDATED', {
+        originProcess: up.originProcess,
+        farmingProcess: up.farmingProcess,
+        harvestProcess: up.harvestProcess,
+        packagingProcess: up.packagingProcess,
+        certificateNumber: up.certificateNumber,
+        harvestDate: up.harvestDate,
+      });
+    }
+
     return product;
   }
 
@@ -207,6 +279,20 @@ export class ProductsService {
     });
 
     await this.clearProductListCache();
+
+    // Gửi thông báo cho Seller
+    if (existing.business && existing.business.userId) {
+      const isApproved = dto.status === ProductStatus.APPROVED;
+      if (dto.status !== ProductStatus.PENDING) {
+        await this.notificationsService.notifySellerProductStatus(
+          existing.business.userId,
+          existing.name,
+          isApproved,
+          dto.reason,
+        );
+      }
+    }
+
     return product;
   }
 
@@ -252,5 +338,13 @@ export class ProductsService {
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .trim();
+  }
+  async incrementViewCount(id: string) {
+    const existing = await this.productsRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+    }
+    await this.productsRepository.incrementViewCount(id);
+    return { success: true };
   }
 }

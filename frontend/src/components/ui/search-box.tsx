@@ -24,14 +24,12 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
   }, [value]);
 
   useEffect(() => {
+    if (innerValue === value) return;
     const handler = setTimeout(() => {
       onChange(innerValue);
     }, debounceMs);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [innerValue, onChange, debounceMs]);
+    return () => clearTimeout(handler);
+  }, [innerValue, value, onChange, debounceMs]);
 
   const handleClear = () => {
     setInnerValue('');
@@ -46,12 +44,20 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
         value={innerValue}
         onChange={(e) => setInnerValue(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-10 pr-9 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all duration-150"
+        className={cn(
+          'w-full h-10 pl-10 pr-9 rounded-xl border text-sm',
+          'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400',
+          'focus:outline-none focus:ring-2 focus:ring-[#16A34A]/15 focus:border-[#16A34A]',
+          'transition-all duration-150',
+          'dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500',
+          'dark:focus:border-[#16A34A] dark:focus:ring-[#16A34A]/20'
+        )}
       />
       {innerValue && (
         <button
           onClick={handleClear}
-          className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-50 cursor-pointer"
+          aria-label="Xóa tìm kiếm"
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
         >
           <X className="h-3.5 w-3.5" />
         </button>

@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RoleName, User, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
 
 import { AuthRepository } from './auth.repository';
 import { RedisService } from '../redis/redis.service';
@@ -31,12 +32,18 @@ export class AuthService {
       throw new ConflictException('Email đã được sử dụng');
     }
 
-    const sellerRole = await this.authRepository.getRoleByName(RoleName.SELLER);
-    if (!sellerRole) {
-      throw new ConflictException('Hệ thống chưa thiết lập vai trò SELLER');
+    const targetRoleName = dto.role || RoleName.VISITOR;
+
+    if (targetRoleName === RoleName.ADMIN || targetRoleName === RoleName.EVENT_COORDINATOR) {
+      throw new ForbiddenException(`Không được phép đăng ký vai trò ${targetRoleName}`);
     }
 
-    const passwordHash = bcrypt.hashSync(dto.password, 10);
+    const userRole = await this.authRepository.getRoleByName(targetRoleName);
+    if (!userRole) {
+      throw new ConflictException(`Hệ thống chưa thiết lập vai trò ${targetRoleName}`);
+    }
+
+    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
 
     const user = await this.authRepository.createUser(
       {
@@ -46,9 +53,8 @@ export class AuthService {
         passwordHash,
         isActive: true,
       },
-      sellerRole.id,
+      userRole.id,
     );
-
     const tokens = await this.generateTokens(user.id, user.email, user.role.name);
     return {
       ...tokens,
@@ -62,9 +68,29 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
 
-    const passwordMatch = bcrypt.compareSync(dto.password, user.passwordHash);
+    let passwordMatch = false;
+    let needsRehash = false;
+
+    // Phân biệt bcrypt cũ ($2a$ hoặc $2b$) và argon2 ($argon2id$)
+    if (user.passwordHash.startsWith('$2a$') || user.passwordHash.startsWith('$2b$')) {
+      passwordMatch = bcrypt.compareSync(dto.password, user.passwordHash);
+      if (passwordMatch) needsRehash = true;
+    } else {
+      try {
+        passwordMatch = await argon2.verify(user.passwordHash, dto.password);
+      } catch {
+        passwordMatch = false;
+      }
+    }
+
     if (!passwordMatch) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
+    }
+
+    // Auto-migrate hash
+    if (needsRehash) {
+      const newHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+      await this.authRepository.updatePassword(user.id, newHash);
     }
 
     if (!user.isActive) {
@@ -84,13 +110,13 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token đã bị vô hiệu hóa');
     }
 
-    // Đưa refresh token cũ vào blacklist (Token Rotation)
-    await this.blacklistToken(refreshToken);
-
     const user = await this.authRepository.findById(userId);
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Tài khoản không hợp lệ hoặc đã bị khóa');
     }
+
+    // Task 3: Refresh Token Rotation - Blacklist the old refresh token
+    await this.blacklistToken(refreshToken);
 
     const tokens = await this.generateTokens(user.id, user.email, user.role.name);
     return {
@@ -99,8 +125,11 @@ export class AuthService {
     };
   }
 
-  async logout(refreshToken: string) {
+  async logout(refreshToken: string, accessToken?: string) {
     await this.blacklistToken(refreshToken);
+    if (accessToken) {
+      await this.blacklistToken(accessToken);
+    }
     return { message: 'Đăng xuất thành công' };
   }
 

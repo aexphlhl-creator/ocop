@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards , ParseUUIDPipe} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { BusinessesService } from './businesses.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
@@ -40,7 +40,7 @@ export class BusinessesController {
   @ApiOperation({ summary: 'Lấy thông tin chi tiết một chủ thể sản xuất theo ID' })
   @ApiResponse({ status: 200, description: 'Thông tin chi tiết chủ thể kèm Owner, địa giới và số lượng sản phẩm OCOP' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy chủ thể' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.businessesService.findOne(id);
   }
 
@@ -54,7 +54,7 @@ export class BusinessesController {
   @ApiResponse({ status: 403, description: 'Không có quyền cập nhật chủ thể sản xuất này' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy chủ thể' })
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBusinessDto,
     @CurrentUser() user: RequestUser,
   ) {
@@ -70,7 +70,7 @@ export class BusinessesController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không có quyền xóa chủ thể sản xuất này' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy chủ thể' })
-  async remove(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
     return this.businessesService.remove(id, user);
   }
 }

@@ -5,9 +5,14 @@ import { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 
+import { RedisService } from '../../redis/redis.service';
+
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    private readonly redisService: RedisService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
       ignoreExpiration: false,
@@ -20,6 +25,11 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     const refreshToken = req.body.refreshToken;
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token không tìm thấy trong body');
+    }
+
+    const isBlacklisted = await this.redisService.get(`auth:blacklist:${refreshToken}`);
+    if (isBlacklisted) {
+      throw new UnauthorizedException('Refresh token đã bị vô hiệu hóa');
     }
     return {
       sub: payload.sub,

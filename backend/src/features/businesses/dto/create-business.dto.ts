@@ -27,6 +27,21 @@ export class CreateBusinessDto {
   @IsNotEmpty({ message: 'Địa chỉ không được để trống' })
   address: string;
 
+  @ApiPropertyOptional({ description: 'Bài giới thiệu về chủ thể sản xuất' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Lĩnh vực hoạt động/kinh doanh (VD: Nông sản, Thủ công)' })
+  @IsString()
+  @IsOptional()
+  industry?: string;
+
+  @ApiPropertyOptional({ description: 'URL ảnh đại diện hoặc logo của chủ thể' })
+  @IsString()
+  @IsOptional()
+  avatarUrl?: string;
+
   @ApiProperty({ example: 'province-uuid', description: 'ID tỉnh/thành phố' })
   @IsUUID('4', { message: 'provinceId phải là định dạng UUID v4' })
   provinceId: string;

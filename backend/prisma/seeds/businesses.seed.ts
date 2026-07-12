@@ -17,12 +17,12 @@ export async function seedBusinesses(
     {
       name: 'Hợp tác xã Gốm sứ Bát Tràng',
       taxCode: '0101234567',
-      address: 'Số 10, Xóm 3, Xã Bát Tràng, Hà Nội',
+      address: 'Số 10, Xóm 3, Xã Bát Tràng, TP. Hà Nội',
       email: 'battrang@gmail.com',
       phone: '0243888888',
       ownerId: seller1.id,
-      wardKey: 'Hà Nội_Xã Bát Tràng',
-      provinceName: 'Hà Nội',
+      wardKey: 'TP. Hà Nội_Xã Bát Tràng',
+      provinceName: 'TP. Hà Nội',
     },
     {
       name: 'Hợp tác xã Mỳ gạo Hùng Lô',

@@ -2,8 +2,11 @@ import { Module } from '@nestjs/common';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 import { ProductsRepository } from './products.repository';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
+  imports: [NotificationsModule, BlockchainModule],
   controllers: [ProductsController],
   providers: [ProductsService, ProductsRepository],
   exports: [ProductsService, ProductsRepository],

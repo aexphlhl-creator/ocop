@@ -33,6 +33,9 @@ export class BusinessesService {
       phone: dto.phone || null,
       email: dto.email || null,
       address: dto.address,
+      description: dto.description || null,
+      industry: dto.industry || null,
+      avatarUrl: dto.avatarUrl || null,
       user: { connect: { id: targetUserId } },
       province: { connect: { id: dto.provinceId } },
       ward: { connect: { id: dto.wardId } },
@@ -108,6 +111,9 @@ export class BusinessesService {
       phone: dto.phone,
       email: dto.email,
       address: dto.address,
+      description: dto.description,
+      industry: dto.industry,
+      avatarUrl: dto.avatarUrl,
       province: dto.provinceId ? { connect: { id: dto.provinceId } } : undefined,
       ward: dto.wardId ? { connect: { id: dto.wardId } } : undefined,
     };
@@ -120,6 +126,9 @@ export class BusinessesService {
       if (dto.ownerId) {
         updateData.user = { connect: { id: dto.ownerId } };
       }
+    } else if (currentUser.role === RoleName.SELLER) {
+      // Khi chủ thể tự sửa thông tin, tự động đưa về trạng thái chờ duyệt
+      updateData.isVerified = false;
     }
 
     const updated = await this.businessesRepository.update(id, updateData);
@@ -165,6 +174,9 @@ export class BusinessesService {
       name: business.name,
       taxCode: business.taxCode,
       address: business.address,
+      description: business.description,
+      industry: business.industry,
+      avatarUrl: business.avatarUrl,
       phone: business.phone,
       email: business.email,
       province: business.province ? {

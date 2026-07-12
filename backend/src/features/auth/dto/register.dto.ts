@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import { RoleName } from '@prisma/client';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Nguyễn Văn A', description: 'Họ và tên của người dùng' })
@@ -11,13 +12,18 @@ export class RegisterDto {
   @IsEmail({}, { message: 'Email không hợp lệ' })
   email: string;
 
-  @ApiProperty({ example: 'securePassword123', description: 'Mật khẩu tối thiểu 8 ký tự' })
+  @ApiProperty({ example: 'securePassword123', description: 'Mật khẩu tối thiểu 6 ký tự' })
   @IsString()
-  @MinLength(8, { message: 'Mật khẩu phải có tối thiểu 8 ký tự' })
+  @MinLength(6, { message: 'Mật khẩu phải có tối thiểu 6 ký tự' })
   password: string;
 
-  @ApiProperty({ example: '0987654321', description: 'Số điện thoại liên hệ' })
+  @ApiProperty({ example: '0987654321', description: 'Số điện thoại liên hệ (Tùy chọn)', required: false })
   @IsString()
-  @IsNotEmpty({ message: 'Số điện thoại không được trống' })
-  phone: string;
+  @IsOptional()
+  phone?: string;
+
+  @ApiProperty({ enum: ['VISITOR', 'SELLER'], example: RoleName.VISITOR, description: 'Vai trò người dùng đăng ký' })
+  @IsEnum(['VISITOR', 'SELLER'], { message: 'Vai trò không hợp lệ, chỉ chấp nhận VISITOR hoặc SELLER' })
+  @IsOptional()
+  role?: RoleName;
 }

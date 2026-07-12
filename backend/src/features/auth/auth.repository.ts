@@ -37,4 +37,11 @@ export class AuthRepository {
       include: { role: true },
     });
   }
+
+  async updatePassword(id: string, passwordHash: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  }
 }

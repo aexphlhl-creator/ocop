@@ -20,7 +20,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : (exception as any)?.status || HttpStatus.INTERNAL_SERVER_ERROR;
 
     const exceptionResponse: any =
       exception instanceof HttpException ? exception.getResponse() : null;
@@ -29,18 +29,33 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let details: any = undefined;
 
     if (exception instanceof HttpException) {
-      message = exception.message;
-      if (exceptionResponse && typeof exceptionResponse === 'object') {
-        const resMessage = exceptionResponse.message;
-        if (Array.isArray(resMessage)) {
-          details = resMessage;
-          message = 'Validation failed';
-        } else if (typeof resMessage === 'string') {
-          message = resMessage;
+      if (status >= 500) {
+        message = 'Internal server error';
+      } else {
+        message = exception.message;
+        if (exceptionResponse && typeof exceptionResponse === 'object') {
+          const resMessage = exceptionResponse.message;
+          if (Array.isArray(resMessage)) {
+            details = resMessage;
+            message = 'Validation failed';
+          } else if (typeof resMessage === 'string') {
+            message = resMessage;
+          }
         }
       }
-    } else if (exception instanceof Error) {
-      message = exception.message;
+    } else {
+      if (status === 413) {
+        message = 'Payload Too Large';
+      } else if (status >= 500) {
+        message = 'Internal server error';
+      } else {
+        message = (exception as any)?.message || 'Internal server error';
+      }
+    }
+
+    let errorCode = 'SYSTEM_500';
+    if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
+       errorCode = this.mapErrorCode(request.url, status);
     }
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -57,11 +72,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
       success: false,
       error: {
         statusCode: status,
+        errorCode,
         message,
         details,
         timestamp: new Date().toISOString(),
         path: request.url,
+        reqId: (request as any).id || request.headers['x-correlation-id'] || 'UNKNOWN',
       },
     });
+  }
+
+  private mapErrorCode(url: string, status: number): string {
+    const s = String(status);
+    if (url.includes('/auth/')) return `AUTH_${s}`;
+    if (url.includes('/businesses')) return `BUSINESS_${s}`;
+    if (url.includes('/products')) return `PRODUCT_${s}`;
+    if (url.includes('/inventory')) return `INVENTORY_${s}`;
+    if (url.includes('/orders')) return `ORDER_${s}`;
+    if (url.includes('/certificates')) return `CERTIFICATE_${s}`;
+    if (url.includes('/supply-chain') || url.includes('/traceability')) return `TRACEABILITY_${s}`;
+    if (url.includes('/blockchain')) return `BLOCKCHAIN_${s}`;
+    if (status === 400) return 'VALIDATION_400';
+    return `SYSTEM_${s}`;
   }
 }

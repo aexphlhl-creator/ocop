@@ -11,8 +11,15 @@ import { ApiResponse } from '../interfaces/api-response.interface';
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponse<any>> {
   intercept(context: ExecutionContext, next: CallHandler): Observable<ApiResponse<any>> {
+    const request = context.switchToHttp().getRequest<{ path?: string; url?: string }>();
+    const requestPath = request.path ?? request.url;
+
     return next.handle().pipe(
       map((data) => {
+        if (requestPath === '/health/live') {
+          return data as ApiResponse<any>;
+        }
+
         // Nếu đã được đóng gói sẵn
         if (data && typeof data === 'object' && 'success' in data) {
           return data as ApiResponse<any>;

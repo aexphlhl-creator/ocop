@@ -7,8 +7,8 @@ import { ConflictException, ForbiddenException } from '@nestjs/common';
 
 describe('BusinessesService', () => {
   let service: BusinessesService;
-  let repository: jest.Mocked<Partial<BusinessesRepository>>;
-  let redisService: jest.Mocked<Partial<RedisService>>;
+  let repository: jest.Mocked<Pick<BusinessesRepository, 'findByTaxCode' | 'create' | 'findById' | 'update' | 'softDelete' | 'findAndCount'>>;
+  let redisService: jest.Mocked<Pick<RedisService, 'get' | 'set' | 'getClient'>>;
 
   const mockUser = {
     id: 'owner-uuid',

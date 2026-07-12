@@ -10,10 +10,10 @@ import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let repository: jest.Mocked<Partial<AuthRepository>>;
-  let jwtService: jest.Mocked<Partial<JwtService>>;
-  let configService: jest.Mocked<Partial<ConfigService>>;
-  let redisService: jest.Mocked<Partial<RedisService>>;
+  let repository: jest.Mocked<Pick<AuthRepository, 'findByEmail' | 'findById' | 'getRoleByName' | 'createUser'>>;
+  let jwtService: jest.Mocked<Pick<JwtService, 'signAsync' | 'decode'>>;
+  let configService: jest.Mocked<Pick<ConfigService, 'getOrThrow'>>;
+  let redisService: jest.Mocked<Pick<RedisService, 'get' | 'set'>>;
 
   const mockRole: Role = {
     id: 'role-uuid',

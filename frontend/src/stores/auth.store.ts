@@ -7,7 +7,7 @@ export interface User {
   email: string;
   fullName: string;
   phone?: string;
-  role: 'ADMIN' | 'SELLER' | 'VISITOR';
+  role: 'ADMIN' | 'SELLER' | 'VISITOR' | 'EVENT_COORDINATOR';
 }
 
 interface AuthState {
@@ -19,7 +19,11 @@ interface AuthState {
   refresh: (accessToken: string, refreshToken: string) => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error('Production API configuration error: NEXT_PUBLIC_API_URL is required.');
+}
 
 // Helpers đồng bộ Cookie cho Middleware Next.js đọc ở Server side
 function setCookie(name: string, value: string, days = 7) {

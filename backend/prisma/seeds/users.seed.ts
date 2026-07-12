@@ -7,16 +7,42 @@ export async function seedUsers(
 ): Promise<Record<string, User>> {
   const adminRole = rolesMap[RoleName.ADMIN];
   const sellerRole = rolesMap[RoleName.SELLER];
+  const visitorRole = rolesMap[RoleName.VISITOR];
 
-  if (!adminRole || !sellerRole) {
+  if (!adminRole || !sellerRole || !visitorRole) {
     throw new Error('Missing required roles for seeding users');
   }
 
   const adminPasswordHash = bcrypt.hashSync('admin123', 10);
   const sellerPasswordHash1 = bcrypt.hashSync('seller123', 10);
   const sellerPasswordHash2 = bcrypt.hashSync('seller123', 10);
+  const customerPasswordHash = bcrypt.hashSync('customer123', 10);
 
   const usersData = [
+    {
+      email: 'admin@demo.com',
+      fullName: 'OCOP Demo Admin',
+      passwordHash: adminPasswordHash,
+      phone: '0900000001',
+      roleId: adminRole.id,
+      isActive: true,
+    },
+    {
+      email: 'seller@demo.com',
+      fullName: 'OCOP Demo Seller',
+      passwordHash: sellerPasswordHash1,
+      phone: '0900000002',
+      roleId: sellerRole.id,
+      isActive: true,
+    },
+    {
+      email: 'customer@demo.com',
+      fullName: 'OCOP Demo Customer',
+      passwordHash: customerPasswordHash,
+      phone: '0900000003',
+      roleId: visitorRole.id,
+      isActive: true,
+    },
     {
       email: 'admin@ocop.gov.vn',
       fullName: 'Hệ thống OCOP Việt Nam',

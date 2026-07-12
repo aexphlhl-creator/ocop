@@ -266,5 +266,17 @@ ALTER TABLE "products" ADD CONSTRAINT "products_province_id_fkey" FOREIGN KEY ("
 -- AddForeignKey
 ALTER TABLE "product_images" ADD CONSTRAINT "product_images_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- CreateTable
+CREATE TABLE "inventory_batches" (
+    "id" UUID NOT NULL,
+    CONSTRAINT "inventory_batches_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "blockchain_records" (
+    "id" UUID NOT NULL,
+    CONSTRAINT "blockchain_records_pkey" PRIMARY KEY ("id")
+);
+
 -- AddForeignKey
 ALTER TABLE "news" ADD CONSTRAINT "news_author_id_fkey" FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

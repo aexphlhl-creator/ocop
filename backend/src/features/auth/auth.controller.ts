@@ -1,4 +1,6 @@
-import { Controller, Post, Get, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import type { Request } from 'express';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -15,6 +17,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @UseGuards(ThrottlerGuard)
   @ApiOperation({ summary: 'Đăng ký tài khoản SELLER mới' })
   @ApiResponse({ status: 201, description: 'Đăng ký thành công, trả về thông tin user và cặp token' })
   @ApiResponse({ status: 400, description: 'Dữ liệu đầu vào không hợp lệ' })
@@ -24,6 +27,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(ThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Đăng nhập vào hệ thống bằng email và mật khẩu' })
   @ApiResponse({ status: 200, description: 'Đăng nhập thành công, trả về cặp token và user info' })
@@ -34,7 +38,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtRefreshAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtRefreshAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cấp lại Access Token mới bằng Refresh Token' })
   @ApiResponse({ status: 200, description: 'Cấp token mới thành công' })
@@ -46,13 +50,18 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtRefreshAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtRefreshAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Đăng xuất tài khoản, đưa refresh token hiện tại vào blacklist' })
   @ApiResponse({ status: 200, description: 'Đăng xuất thành công' })
   @ApiResponse({ status: 401, description: 'Refresh token không hợp lệ' })
-  async logout(@CurrentUser() user: RequestRefreshUser, @Body() dto: RefreshTokenDto) {
-    return this.authService.logout(user.refreshToken);
+  async logout(@CurrentUser() user: RequestRefreshUser, @Body() dto: RefreshTokenDto, @Req() req: Request) {
+    const authHeader = req.headers.authorization;
+    let accessToken: string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      accessToken = authHeader.substring(7);
+    }
+    return this.authService.logout(user.refreshToken, accessToken);
   }
 
   @Get('me')

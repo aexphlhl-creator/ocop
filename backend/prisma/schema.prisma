@@ -14,6 +14,39 @@ enum RoleName {
   ADMIN
   SELLER
   VISITOR
+  EVENT_COORDINATOR
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum NotificationTarget {
+  SELLERS
+  CUSTOMERS
+  ALL
+  BUSINESSES
+  PROVINCES
+  WARDS
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum ProductStatus {
@@ -22,9 +55,83 @@ enum ProductStatus {
   REJECTED
 }
 
+enum UpgradeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum NewsStatus {
   DRAFT
   PUBLISHED
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum OrderStatus {
+  PENDING // Chờ xác nhận
+  CONFIRMED // Đã xác nhận
+  PACKING // Đang đóng gói
+  PROCESSING // Đang chuẩn bị (legacy)
+  SHIPPED // Đang giao
+  DELIVERED // Đã giao
+  CANCELLED // Đã hủy
+  RETURNED // Hoàn trả
+}
+
+enum PaymentMethod {
+  COD
+  VNPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum BatchStatus {
+  ACTIVE // Lô đang còn hàng
+  DEPLETED // Lô đã hết
+  EXPIRED // Lô đã hết hạn
+  RECALLED // Thu hồi
+}
+
+enum MovementType {
+  IN // Nhập kho
+  OUT // Xuất kho
+  ADJUSTMENT // Điều chỉnh kiểm kê
+  RETURN // Trả hàng về kho
+  TRANSFER // Chuyển giữa các kho
+}
+
+enum QualityStatus {
+  PENDING_CHECK // Chờ kiểm tra
+  PASSED // Đạt chuẩn
+  FAILED // Không đạt
+  QUARANTINE // Cách ly kiểm dịch
+}
+
+enum CertificateStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  PENDING
+}
+
+enum BlockchainRecordStatus {
+  QUEUED
+  PROCESSING
+  CONFIRMED
+  FAILED
+  PENDING
+  COMPLETED
 }
 
 // ==========================================
@@ -43,37 +150,50 @@ model Role {
 }
 
 model User {
-  id                String                   @id @default(uuid()) @db.Uuid
-  email             String                   @unique
-  passwordHash      String                   @map("password_hash")
-  fullName          String                   @map("full_name")
-  phone             String?
-  roleId            String                   @db.Uuid @map("role_id")
-  role              Role                     @relation(fields: [roleId], references: [id])
-  isActive          Boolean                  @default(true) @map("is_active")
-  businesses        Business[]
-  news              News[]
-  approvedProducts  Product[]                @relation("ProductApprovedBy")
-  approvalHistories ProductApprovalHistory[]
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  id                     String                   @id @default(uuid()) @db.Uuid
+  email                  String                   @unique
+  passwordHash           String                   @map("password_hash")
+  fullName               String                   @map("full_name")
+  phone                  String?
+  roleId                 String                   @map("role_id") @db.Uuid
+  role                   Role                     @relation(fields: [roleId], references: [id])
+  isActive               Boolean                  @default(true) @map("is_active")
+  businesses             Business[]
+  news                   News[]
+  approvedProducts       Product[]                @relation("ProductApprovedBy")
+  approvalHistories      ProductApprovalHistory[]
+  notifications          Notification[]
+  orders                 Order[]
+  reviews                ProductReview[]
+  managedWarehouses      Warehouse[]
+  stockMovements         StockMovement[]
+  batchJourneys          BatchJourney[]           @relation("BatchJourneyActor")
+  createdCertificates    Certificate[]            @relation("CertificateCreatedBy")
+  approvedPurchaseOrders PurchaseOrder[]          @relation("POApprovedBy")
+  receivedGoodsReceipts  GoodsReceipt[]           @relation("GoodsReceivedBy")
+  createdEvents          Event[]                  @relation("EventCreatedBy")
+  updatedEvents          Event[]                  @relation("EventUpdatedBy")
+  createdCampaigns       NotificationCampaign[]   @relation("CampaignCreatedBy")
+  campaignRecipients     NotificationRecipient[]
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
 model Province {
-  id              String     @id @default(uuid()) @db.Uuid
-  name            String     @unique
-  code            String     @unique // Mã hành chính chính thức (ví dụ: '01', '79')
-  latitude        Float
-  longitude       Float
-  geojsonPath     String?    @map("geojson_path")
-  bounds          Json?
-  wards           Ward[]
-  businesses      Business[]
-  products        Product[]
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String     @unique
+  code        String     @unique // Mã hành chính chính thức (ví dụ: '01', '79')
+  latitude    Float
+  longitude   Float
+  geojsonPath String?    @map("geojson_path")
+  bounds      Json?
+  wards       Ward[]
+  businesses  Business[]
+  products    Product[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   @@map("provinces")
 }
@@ -81,11 +201,11 @@ model Province {
 model Ward {
   id          String     @id @default(uuid()) @db.Uuid
   name        String
-  provinceId  String     @db.Uuid @map("province_id")
+  provinceId  String     @map("province_id") @db.Uuid
   province    Province   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
   latitude    Float
   longitude   Float
-  avatar      String?    // Ảnh đại diện xã
+  avatar      String? // Ảnh đại diện xã
   description String?    @db.Text
   geojsonPath String?    @map("geojson_path")
   bounds      Json?
@@ -100,23 +220,33 @@ model Ward {
 }
 
 model Business {
-  id         String    @id @default(uuid()) @db.Uuid
-  name       String
-  taxCode    String    @unique @map("tax_code")
-  phone      String?
-  email      String?
-  address    String
-  userId     String    @db.Uuid @map("user_id")
-  user       User      @relation(fields: [userId], references: [id])
-  wardId     String    @db.Uuid @map("ward_id")
-  ward       Ward      @relation(fields: [wardId], references: [id])
-  provinceId String    @db.Uuid @map("province_id")
-  province   Province  @relation(fields: [provinceId], references: [id])
-  isVerified Boolean   @default(false) @map("is_verified")
-  products   Product[]
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deletedAt  DateTime? @map("deleted_at")
+  id             String               @id @default(uuid()) @db.Uuid
+  name           String
+  taxCode        String               @unique @map("tax_code")
+  phone          String?
+  email          String?
+  address        String
+  description    String?              @db.Text
+  industry       String?
+  avatarUrl      String?              @map("avatar_url")
+  userId         String               @map("user_id") @db.Uuid
+  user           User                 @relation(fields: [userId], references: [id])
+  wardId         String               @map("ward_id") @db.Uuid
+  ward           Ward                 @relation(fields: [wardId], references: [id])
+  provinceId     String               @map("province_id") @db.Uuid
+  province       Province             @relation(fields: [provinceId], references: [id])
+  isVerified     Boolean              @default(false) @map("is_verified")
+  products       Product[]
+  orders         Order[]
+  vouchers       Voucher[]
+  upgrades       OcopUpgradeRequest[]
+  warehouses     Warehouse[]
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  deletedAt      DateTime?            @map("deleted_at")
+  suppliers      Supplier[]
+  purchaseOrders PurchaseOrder[]
+  goodsReceipts  GoodsReceipt[]
 
   @@index([userId])
   @@index([wardId])
@@ -137,14 +267,16 @@ model Category {
 }
 
 model OcopLevel {
-  id        String    @id @default(uuid()) @db.Uuid
-  level     Int       @unique // 3, 4, 5
-  title     String    // 3 Sao, 4 Sao, 5 Sao
-  icon      String?
-  color     String?
-  products  Product[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id              String               @id @default(uuid()) @db.Uuid
+  level           Int                  @unique // 3, 4, 5
+  title           String // 3 Sao, 4 Sao, 5 Sao
+  icon            String?
+  color           String?
+  products        Product[]
+  currentUpgrades OcopUpgradeRequest[] @relation("CurrentLevelUpgrades")
+  targetUpgrades  OcopUpgradeRequest[] @relation("TargetLevelUpgrades")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
 
   @@map("ocop_levels")
 }
@@ -155,30 +287,51 @@ model Product {
   slug              String                   @unique
   description       String                   @db.Text
   price             Decimal                  @db.Decimal(12, 2)
-  unit              String                   // Ví dụ: Hộp, Gói, Kg...
-  ocopLevelId       String                   @db.Uuid @map("ocop_level_id")
+  unit              String // Ví dụ: Hộp, Gói, Kg...
+  ocopLevelId       String                   @map("ocop_level_id") @db.Uuid
   ocopLevel         OcopLevel                @relation(fields: [ocopLevelId], references: [id])
-  categoryId        String                   @db.Uuid @map("category_id")
+  categoryId        String                   @map("category_id") @db.Uuid
   category          Category                 @relation(fields: [categoryId], references: [id])
-  businessId        String                   @db.Uuid @map("business_id")
+  businessId        String                   @map("business_id") @db.Uuid
   business          Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  wardId            String                   @db.Uuid @map("ward_id")
+  wardId            String                   @map("ward_id") @db.Uuid
   ward              Ward                     @relation(fields: [wardId], references: [id])
-  provinceId        String                   @db.Uuid @map("province_id")
+  provinceId        String                   @map("province_id") @db.Uuid
   province          Province                 @relation(fields: [provinceId], references: [id])
   latitude          Float
   longitude         Float
   status            ProductStatus            @default(PENDING)
   approvedAt        DateTime?                @map("approved_at")
-  approvedById      String?                  @db.Uuid @map("approved_by_id")
+  approvedById      String?                  @map("approved_by_id") @db.Uuid
   approvedBy        User?                    @relation("ProductApprovedBy", fields: [approvedById], references: [id])
   rejectReason      String?                  @map("reject_reason") @db.Text
   approvalHistories ProductApprovalHistory[]
   videoUrl          String?                  @map("video_url")
   images            ProductImage[]
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-  deletedAt         DateTime?                @map("deleted_at")
+  viewStats         ProductViewStat[]
+  orderItems        OrderItem[]
+  reviews           ProductReview[]
+  upgradeRequests   OcopUpgradeRequest[]
+  averageRating     Float                    @default(0) @map("average_rating")
+  reviewCount       Int                      @default(0) @map("review_count")
+  blockchainRecords BlockchainRecord[]
+  certificates      Certificate[]
+
+  // Traceability Fields
+  originProcess     String?   @map("origin_process") @db.Text
+  farmingProcess    String?   @map("farming_process") @db.Text
+  harvestProcess    String?   @map("harvest_process") @db.Text
+  packagingProcess  String?   @map("packaging_process") @db.Text
+  certificateNumber String?   @map("certificate_number")
+  harvestDate       DateTime? @map("harvest_date")
+
+  inventories Inventory[]
+
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+  purchaseOrderItems PurchaseOrderItem[]
+  goodsReceiptItems  GoodsReceiptItem[]
 
   @@index([ocopLevelId])
   @@index([categoryId])
@@ -191,7 +344,7 @@ model Product {
 
 model ProductImage {
   id        String   @id @default(uuid()) @db.Uuid
-  productId String   @db.Uuid @map("product_id")
+  productId String   @map("product_id") @db.Uuid
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   imageUrl  String   @map("image_url")
   isPrimary Boolean  @default(false) @map("is_primary")
@@ -208,7 +361,7 @@ model News {
   slug      String     @unique
   content   String     @db.Text
   thumbnail String
-  authorId  String     @db.Uuid @map("author_id")
+  authorId  String     @map("author_id") @db.Uuid
   author    User       @relation(fields: [authorId], references: [id])
   status    NewsStatus @default(DRAFT)
   createdAt DateTime   @default(now()) @map("created_at")
@@ -221,17 +374,725 @@ model News {
 }
 
 model ProductApprovalHistory {
-  id         String        @id @default(uuid()) @db.Uuid
-  productId  String        @db.Uuid @map("product_id")
-  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  adminId    String        @db.Uuid @map("admin_id")
-  admin      User          @relation(fields: [adminId], references: [id])
-  oldStatus  ProductStatus @map("old_status")
-  newStatus  ProductStatus @map("new_status")
-  reason     String?       @db.Text
-  createdAt  DateTime      @default(now()) @map("created_at")
+  id        String        @id @default(uuid()) @db.Uuid
+  productId String        @map("product_id") @db.Uuid
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  adminId   String        @map("admin_id") @db.Uuid
+  admin     User          @relation(fields: [adminId], references: [id])
+  oldStatus ProductStatus @map("old_status")
+  newStatus ProductStatus @map("new_status")
+  reason    String?       @db.Text
+  createdAt DateTime      @default(now()) @map("created_at")
 
   @@index([productId])
   @@index([adminId])
   @@map("product_approval_histories")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String           @db.Text
+  type      NotificationType @default(INFO)
+  isRead    Boolean          @default(false) @map("is_read")
+  link      String?          @db.Text
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+model ProductViewStat {
+  id        String  @id @default(uuid()) @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int
+  viewCount Int     @default(0) @map("view_count")
+
+  @@unique([productId, year, month])
+  @@index([productId])
+  @@map("product_view_stats")
+}
+
+model Order {
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  user            User          @relation(fields: [userId], references: [id])
+  businessId      String        @map("business_id") @db.Uuid
+  business        Business      @relation(fields: [businessId], references: [id])
+  totalAmount     Decimal       @map("total_amount") @db.Decimal(12, 2)
+  shippingAddress String        @map("shipping_address") @db.Text
+  phone           String
+  status          OrderStatus   @default(PENDING)
+  paymentMethod   PaymentMethod @default(COD) @map("payment_method")
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  vnpayTxnRef     String?       @map("vnpay_txn_ref")
+
+  platformVoucherId String?  @map("platform_voucher_id") @db.Uuid
+  platformVoucher   Voucher? @relation("PlatformVoucherOrders", fields: [platformVoucherId], references: [id])
+  shopVoucherId     String?  @map("shop_voucher_id") @db.Uuid
+  shopVoucher       Voucher? @relation("ShopVoucherOrders", fields: [shopVoucherId], references: [id])
+  discountAmount    Decimal  @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  note              String?  @db.Text // Ghi chú của khách
+
+  items     OrderItem[]
+  tracking  OrderTracking[]
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([businessId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderTracking {
+  id          String      @id @default(uuid()) @db.Uuid
+  orderId     String      @map("order_id") @db.Uuid
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status      OrderStatus
+  description String?     @db.Text
+  changedById String?     @map("changed_by_id") @db.Uuid // User đã thay đổi trạng thái
+  ipAddress   String?     @map("ip_address")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@map("order_trackings")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model Voucher {
+  id            String       @id @default(uuid()) @db.Uuid
+  code          String       @unique
+  discountType  DiscountType @map("discount_type")
+  discountValue Float        @map("discount_value")
+  minOrderValue Float        @default(0) @map("min_order_value")
+  maxDiscount   Float?       @map("max_discount")
+  startDate     DateTime     @map("start_date")
+  endDate       DateTime     @map("end_date")
+  usageLimit    Int?         @map("usage_limit")
+  usedCount     Int          @default(0) @map("used_count")
+  isActive      Boolean      @default(true) @map("is_active")
+
+  businessId String?   @map("business_id") @db.Uuid
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  platformOrders Order[] @relation("PlatformVoucherOrders")
+  shopOrders     Order[] @relation("ShopVoucherOrders")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([businessId])
+  @@index([code])
+  @@map("vouchers")
+}
+
+model OrderItem {
+  id              String          @id @default(uuid()) @db.Uuid
+  orderId         String          @map("order_id") @db.Uuid
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String          @map("product_id") @db.Uuid
+  product         Product         @relation(fields: [productId], references: [id])
+  quantity        Int
+  price           Decimal         @db.Decimal(12, 2)
+  // Inventory tracking fields
+  reservedBatchId String?         @map("reserved_batch_id") @db.Uuid // Lô được reserve khi đặt hàng
+  reservedBatch   InventoryBatch? @relation("OrderItemReservedBatch", fields: [reservedBatchId], references: [id])
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([reservedBatchId])
+  @@map("order_items")
+}
+
+model ProductReview {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1 to 5
+  comment   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@index([userId])
+  @@map("product_reviews")
+}
+
+model OcopUpgradeRequest {
+  id             String        @id @default(uuid()) @db.Uuid
+  productId      String        @map("product_id") @db.Uuid
+  product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currentLevelId String        @map("current_level_id") @db.Uuid
+  currentLevel   OcopLevel     @relation("CurrentLevelUpgrades", fields: [currentLevelId], references: [id])
+  targetLevelId  String        @map("target_level_id") @db.Uuid
+  targetLevel    OcopLevel     @relation("TargetLevelUpgrades", fields: [targetLevelId], references: [id])
+  businessId     String        @map("business_id") @db.Uuid
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status         UpgradeStatus @default(PENDING)
+  reason         String?       @db.Text
+  documentUrls   String[]      @map("document_urls")
+  adminComment   String?       @map("admin_comment") @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@index([businessId])
+  @@index([status])
+  @@map("ocop_upgrade_requests")
+}
+
+model BlockchainRecord {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  productId             String                 @map("product_id") @db.Uuid
+  product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  certificateId         String?                @map("certificate_id") @db.Uuid
+  batchId               String?                @map("batch_id") @db.Uuid
+  journeyId             String?                @map("journey_id") @db.Uuid
+  action                String // VD: "FARMING_UPDATED", "CERTIFICATE_ADDED"
+  data                  Json // Nội dung snapshot của dữ liệu truy xuất
+  previousHash          String                 @map("previous_hash")
+  hash                  String // SHA-256 (previousHash + data + timestamp)
+  txId                  String?                @map("tx_id") // Mã giao dịch giả lập hoặc thật (nếu kết nối Web3)
+  transactionHash       String?                @map("transaction_hash")
+  blockHash             String?                @map("block_hash")
+  blockNumber           BigInt?                @map("block_number")
+  gasUsed               BigInt?                @map("gas_used")
+  walletAddress         String?                @map("wallet_address")
+  contractAddress       String?                @map("contract_address")
+  chainId               Int?                   @map("chain_id")
+  explorerUrl           String?                @map("explorer_url") @db.Text
+  receipt               Json?
+  confirmations         Int?
+  lastCheckedAt         DateTime?              @map("last_checked_at")
+  confirmationLatencyMs Int?                   @map("confirmation_latency_ms")
+  retryCount            Int                    @default(0) @map("retry_count")
+  status                BlockchainRecordStatus @default(QUEUED)
+  confirmedAt           DateTime?              @map("confirmed_at")
+  errorMessage          String?                @map("error_message") @db.Text
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@index([transactionHash])
+  @@index([certificateId])
+  @@index([batchId])
+  @@index([journeyId])
+  @@index([status])
+  @@map("blockchain_records")
+}
+
+// ==========================================
+// INVENTORY MANAGEMENT
+// ==========================================
+
+enum WarehouseType {
+  RAW_MATERIAL
+  WORK_IN_PROGRESS
+  FINISHED_GOODS
+  DISTRIBUTION_CENTER
+  COLD_STORAGE
+  TRANSIT
+  OTHER
+}
+
+model Warehouse {
+  id               String        @id @default(uuid()) @db.Uuid
+  code             String        @unique @default(uuid()) // Temporary default for existing rows, will override in logic
+  name             String
+  address          String
+  formattedAddress String?       @map("formatted_address")
+  latitude         Decimal?      @db.Decimal(10, 7)
+  longitude        Decimal?      @db.Decimal(10, 7)
+  description      String?       @db.Text
+  type             WarehouseType @default(OTHER)
+  isActive         Boolean       @default(true) @map("is_active")
+
+  businessId String?   @map("business_id") @db.Uuid
+  business   Business? @relation(fields: [businessId], references: [id])
+
+  managerId String? @map("manager_id") @db.Uuid
+  manager   User?   @relation(fields: [managerId], references: [id])
+
+  inventories    Inventory[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  purchaseOrders PurchaseOrder[]
+  goodsReceipts  GoodsReceipt[]
+
+  @@unique([name, businessId])
+  @@map("warehouses")
+}
+
+model Inventory {
+  id               String           @id @default(uuid()) @db.Uuid
+  warehouseId      String           @map("warehouse_id") @db.Uuid
+  warehouse        Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  productId        String           @map("product_id") @db.Uuid
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currentQuantity  Int              @default(0) @map("current_quantity")
+  reservedQuantity Int              @default(0) @map("reserved_quantity") // Hàng đang được giữ cho đơn hàng
+  minimumQuantity  Int              @default(0) @map("minimum_quantity") // Ngưỡng cảnh báo
+  batches          InventoryBatch[]
+  movements        StockMovement[]
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@unique([warehouseId, productId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@map("inventories")
+}
+
+model InventoryBatch {
+  id                String             @id @default(uuid()) @db.Uuid
+  inventoryId       String             @map("inventory_id") @db.Uuid
+  inventory         Inventory          @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  batchNumber       String             @map("batch_number") // Tự sinh: YYYYMMDD-PRODUCTCODE-SEQ
+  quantity          Int // Số lượng còn lại trong lô
+  initialQuantity   Int                @map("initial_quantity") // Số lượng ban đầu khi nhập
+  manufactureDate   DateTime?          @map("manufacture_date")
+  harvestDate       DateTime?          @map("harvest_date")
+  expiryDate        DateTime?          @map("expiry_date")
+  receivedDate      DateTime           @default(now()) @map("received_date")
+  supplier          String? // Tên nhà cung cấp / nông dân
+  warehouseLocation String?            @map("warehouse_location") // VD: “Kệ A3”, “Kho lạnh”
+  status            BatchStatus        @default(ACTIVE)
+  qualityStatus     QualityStatus      @default(PENDING_CHECK) @map("quality_status")
+  movements         StockMovement[]
+  journeys          BatchJourney[]
+  reservedItems     OrderItem[]        @relation("OrderItemReservedBatch")
+  certificates      Certificate[]
+  createdAt         DateTime           @default(now()) @map("created_at")
+  goodsReceiptItems GoodsReceiptItem[]
+
+  // @@unique([inventoryId, batchNumber])
+  @@index([inventoryId])
+  @@index([expiryDate])
+  @@index([status])
+  @@map("inventory_batches")
+}
+
+model StockMovement {
+  id             String          @id @default(uuid()) @db.Uuid
+  inventoryId    String          @map("inventory_id") @db.Uuid
+  inventory      Inventory       @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  batchId        String?         @map("batch_id") @db.Uuid
+  batch          InventoryBatch? @relation(fields: [batchId], references: [id])
+  movementType   MovementType    @map("movement_type")
+  quantity       Int // Dương = nhập, âm = xuất
+  beforeQuantity Int             @map("before_quantity")
+  afterQuantity  Int             @map("after_quantity")
+  // Transfer fields (chỉ dùng khi movementType = TRANSFER)
+  toInventoryId  String?         @map("to_inventory_id") @db.Uuid
+  reason         String?         @db.Text
+  referenceId    String?         @map("reference_id") // VD: orderId, purchaseOrderId
+  referenceType  String?         @map("reference_type") // VD: "ORDER", "PURCHASE"
+  note           String?         @db.Text
+  createdById    String          @map("created_by_id") @db.Uuid
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([inventoryId])
+  @@index([batchId])
+  @@index([createdAt])
+  @@index([movementType])
+  @@map("stock_movements")
+}
+
+// ==========================================
+// SUPPLY CHAIN MANAGEMENT
+// ==========================================
+
+enum SupplyChainStageName {
+  HARVEST // Thu hoạch
+  RECEIVED // Tiếp nhận
+  QUALITY_INSPECTION // Kiểm định chất lượng
+  PROCESSING // Chế biến
+  PACKAGING // Đóng gói
+  WAREHOUSE // Nhập kho
+  SHIPPING // Xuất kho / Vận chuyển
+  DISTRIBUTOR // Đại lý / Nhà phân phối
+  RETAIL // Bán lẻ
+  CUSTOMER // Khách hàng
+}
+
+model SupplyChainStage {
+  id          String               @id @default(uuid()) @db.Uuid
+  name        SupplyChainStageName @unique
+  displayName String               @map("display_name") // Tên hiển thị tiếng Việt
+  icon        String? // Tên icon (e.g. "Sprout", "FlaskConical")
+  color       String? // Màu hex hoặc class (e.g. "#10B981")
+  order       Int                  @unique // Thứ tự hiển thị trong timeline
+  description String?              @db.Text
+  journeys    BatchJourney[]
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  @@map("supply_chain_stages")
+}
+
+model BatchJourney {
+  id      String           @id @default(uuid()) @db.Uuid
+  batchId String           @map("batch_id") @db.Uuid
+  batch   InventoryBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  stageId String           @map("stage_id") @db.Uuid
+  stage   SupplyChainStage @relation(fields: [stageId], references: [id])
+
+  // Vị trí địa lý
+  location  String @db.Text // Tên địa điểm (tự nhập)
+  latitude  Float?
+  longitude Float?
+
+  // Thực thể thực hiện
+  actorId   String? @map("actor_id") @db.Uuid // User nội bộ (nullable)
+  actor     User?   @relation("BatchJourneyActor", fields: [actorId], references: [id])
+  actorName String  @map("actor_name") // Tên người thực hiện (bắt buộc)
+
+  // Nội dung
+  note           String?  @db.Text
+  imageUrls      String[] @map("image_urls")
+  attachmentUrls String[] @map("attachment_urls")
+
+  // Audit
+  ipAddress String? @map("ip_address") // IP của người tạo
+
+  // Chuẩn bị Blockchain (chưa triển khai, để sẵn field)
+  blockchainTxHash  String? @map("blockchain_tx_hash")
+  blockchainPayload Json?   @map("blockchain_payload") // Snapshot JSON của record này
+
+  // Append-only: KHÔNG có updatedAt, KHÔNG cho phép update/delete
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([batchId])
+  @@index([stageId])
+  @@index([createdAt])
+  @@map("batch_journeys")
+}
+
+// ==========================================
+// CERTIFICATE MANAGEMENT
+// ==========================================
+
+model CertificateType {
+  id           String        @id @default(uuid()) @db.Uuid
+  code         String        @unique
+  name         String
+  description  String?       @db.Text
+  certificates Certificate[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@map("certificate_types")
+}
+
+model Certificate {
+  id                  String            @id @default(uuid()) @db.Uuid
+  certificateNumber   String            @map("certificate_number")
+  certificateTypeId   String            @map("certificate_type_id") @db.Uuid
+  certificateType     CertificateType   @relation(fields: [certificateTypeId], references: [id])
+  productId           String?           @map("product_id") @db.Uuid
+  product             Product?          @relation(fields: [productId], references: [id])
+  batchId             String?           @map("batch_id") @db.Uuid
+  batch               InventoryBatch?   @relation(fields: [batchId], references: [id])
+  issuingOrganization String            @map("issuing_organization")
+  issueDate           DateTime          @map("issue_date")
+  expiryDate          DateTime          @map("expiry_date")
+  status              CertificateStatus @default(ACTIVE)
+  verificationUrl     String?           @map("verification_url") @db.Text
+  note                String?           @db.Text
+  createdById         String            @map("created_by") @db.Uuid
+  createdBy           User              @relation("CertificateCreatedBy", fields: [createdById], references: [id])
+  documentHash        String            @map("document_hash")
+  blockchainTxHash    String?           @map("blockchain_tx_hash")
+  files               CertificateFile[]
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  deletedAt           DateTime?         @map("deleted_at")
+
+  @@index([certificateTypeId])
+  @@index([productId])
+  @@index([batchId])
+  @@index([status])
+  @@index([expiryDate])
+  @@index([deletedAt])
+  @@map("certificates")
+}
+
+model CertificateFile {
+  id            String      @id @default(uuid()) @db.Uuid
+  certificateId String      @map("certificate_id") @db.Uuid
+  certificate   Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  fileName      String      @map("file_name")
+  fileUrl       String      @map("file_url") @db.Text
+  mimeType      String      @map("mime_type")
+  fileSize      Int         @map("file_size")
+  uploadedAt    DateTime    @default(now()) @map("uploaded_at")
+
+  @@index([certificateId])
+  @@map("certificate_files")
+}
+
+// ==========================================
+// PROCUREMENT & PURCHASE ORDERS (PHASE 10)
+// ==========================================
+
+enum SupplierType {
+  MANUFACTURER
+  DISTRIBUTOR
+  FARMER
+  OTHER
+}
+
+model Supplier {
+  id            String          @id @default(uuid()) @db.Uuid
+  code          String          @unique
+  name          String
+  email         String?
+  phone         String?
+  taxCode       String?         @map("tax_code")
+  address       String?
+  supplierType  SupplierType    @default(OTHER) @map("supplier_type")
+  website       String?
+  country       String?
+  province      String?
+  paymentTerms  String?         @map("payment_terms")
+  bankName      String?         @map("bank_name")
+  bankAccount   String?         @map("bank_account")
+  isActive      Boolean         @default(true) @map("is_active")
+  rating        Float?
+  contactPerson String?         @map("contact_person")
+  businessId    String          @map("business_id") @db.Uuid
+  business      Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  orders        PurchaseOrder[]
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@map("suppliers")
+}
+
+enum POStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  ORDERED
+  RECEIVING
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CLOSED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique // PO-000001
+  supplierId  String    @map("supplier_id") @db.Uuid
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  businessId  String    @map("business_id") @db.Uuid
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  orderDate            DateTime  @default(now()) @map("order_date")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  submittedAt          DateTime? @map("submitted_at")
+  approvedAt           DateTime? @map("approved_at")
+  approvedById         String?   @map("approved_by_id") @db.Uuid
+  approvedBy           User?     @relation("POApprovedBy", fields: [approvedById], references: [id])
+
+  notes         String? @db.Text
+  currency      String  @default("VND")
+  paymentTerms  String? @map("payment_terms")
+  deliveryTerms String? @map("delivery_terms")
+
+  status   POStatus            @default(DRAFT)
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(uuid()) @db.Uuid
+  purchaseOrderId  String        @map("purchase_order_id") @db.Uuid
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId        String        @map("product_id") @db.Uuid
+  product          Product       @relation(fields: [productId], references: [id])
+  quantity         Int
+  receivedQuantity Int           @default(0) @map("received_quantity")
+  unitPrice        Decimal       @map("unit_price") @db.Decimal(15, 2)
+
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id              String             @id @default(uuid()) @db.Uuid
+  code            String             @unique // GR-000001
+  purchaseOrderId String             @map("purchase_order_id") @db.Uuid
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  warehouseId     String             @map("warehouse_id") @db.Uuid
+  warehouse       Warehouse          @relation(fields: [warehouseId], references: [id])
+  businessId      String             @map("business_id") @db.Uuid
+  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  receivedById    String             @map("received_by_id") @db.Uuid
+  receivedBy      User               @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
+  receivedDate    DateTime           @default(now()) @map("received_date")
+  notes           String?            @db.Text
+  items           GoodsReceiptItem[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  @@map("goods_receipts")
+}
+
+enum QualityStatusEnum {
+  PENDING
+  PASSED
+  FAILED
+}
+
+model GoodsReceiptItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  goodsReceiptId String          @map("goods_receipt_id") @db.Uuid
+  goodsReceipt   GoodsReceipt    @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  productId      String          @map("product_id") @db.Uuid
+  product        Product         @relation(fields: [productId], references: [id])
+  batchId        String?         @map("batch_id") @db.Uuid
+  batch          InventoryBatch? @relation(fields: [batchId], references: [id])
+
+  quantity         Int // Total received quantity
+  rejectedQuantity Int               @default(0) @map("rejected_quantity")
+  damagedQuantity  Int               @default(0) @map("damaged_quantity")
+  qualityStatus    QualityStatusEnum @default(PENDING) @map("quality_status")
+  rejectionReason  String?           @map("rejection_reason") @db.Text
+
+  expiryDate DateTime? @map("expiry_date")
+
+  @@map("goods_receipt_items")
+}
+
+// ==========================================
+// EVENT & NOTIFICATION MANAGEMENT (PHASE 11)
+// ==========================================
+
+model Event {
+  id                   String      @id @default(uuid()) @db.Uuid
+  title                String
+  slug                 String      @unique
+  description          String      @db.Text
+  summary              String?     @db.Text
+  banner               String?
+  coverImage           String?     @map("cover_image")
+  
+  // Location
+  location             String?     @db.Text
+  latitude             Float?
+  longitude            Float?
+  
+  // Schedule
+  startDate            DateTime    @map("start_date")
+  endDate              DateTime    @map("end_date")
+  registrationDeadline DateTime?   @map("registration_deadline")
+  
+  // Details
+  organizer            String?
+  eventType            String?     @map("event_type")
+  isFeatured           Boolean     @default(false) @map("is_featured")
+  isPublic             Boolean     @default(true) @map("is_public")
+  
+  // Participants
+  registrationRequired Boolean     @default(false) @map("registration_required")
+  maxParticipants      Int?        @map("max_participants")
+  currentParticipants  Int         @default(0) @map("current_participants")
+  
+  // Contact
+  contactEmail         String?     @map("contact_email")
+  contactPhone         String?     @map("contact_phone")
+  
+  // State
+  status               EventStatus @default(DRAFT)
+  
+  // Audit
+  createdById          String      @map("created_by_id") @db.Uuid
+  createdBy            User        @relation("EventCreatedBy", fields: [createdById], references: [id])
+  updatedById          String?     @map("updated_by_id") @db.Uuid
+  updatedBy            User?       @relation("EventUpdatedBy", fields: [updatedById], references: [id])
+  
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+  deletedAt            DateTime?   @map("deleted_at")
+  
+  campaigns            NotificationCampaign[]
+
+  @@index([status])
+  @@index([startDate])
+  @@index([slug])
+  @@map("events")
+}
+
+model NotificationCampaign {
+  id               String                     @id @default(uuid()) @db.Uuid
+  eventId          String?                    @map("event_id") @db.Uuid
+  event            Event?                     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  
+  targetAudience   NotificationTarget         @map("target_audience")
+  targetDetails    Json?                      @map("target_details") // For specific Businesses/Provinces/Wards
+  
+  title            String
+  message          String                     @db.Text
+  
+  scheduledAt      DateTime?                  @map("scheduled_at")
+  sentAt           DateTime?                  @map("sent_at")
+  status           NotificationCampaignStatus @default(DRAFT)
+  
+  // Stats
+  totalRecipients  Int                        @default(0) @map("total_recipients")
+  sentCount        Int                        @default(0) @map("sent_count")
+  failedCount      Int                        @default(0) @map("failed_count")
+  readCount        Int                        @default(0) @map("read_count")
+
+  // Audit
+  createdById      String                     @map("created_by_id") @db.Uuid
+  createdBy        User                       @relation("CampaignCreatedBy", fields: [createdById], references: [id])
+  
+  recipients       NotificationRecipient[]
+  
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+  
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("notification_campaigns")
+}
+
+model NotificationRecipient {
+  id               String               @id @default(uuid()) @db.Uuid
+  campaignId       String               @map("campaign_id") @db.Uuid
+  campaign         NotificationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId           String               @map("user_id") @db.Uuid
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  deliveryStatus   DeliveryStatus       @default(PENDING) @map("delivery_status")
+  readAt           DateTime?            @map("read_at")
+  
+  createdAt        DateTime             @default(now()) @map("created_at")
+  
+  @@unique([campaignId, userId])
+  @@index([userId])
+  @@index([deliveryStatus])
+  @@map("notification_recipients")
 }

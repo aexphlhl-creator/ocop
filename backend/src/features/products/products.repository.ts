@@ -120,6 +120,8 @@ export class ProductsRepository {
               id: true,
               name: true,
               userId: true,
+              address: true,
+              phone: true,
             },
           },
           province: {
@@ -190,6 +192,8 @@ export class ProductsRepository {
             id: true,
             name: true,
             userId: true,
+            address: true,
+            phone: true,
           },
         },
         province: {
@@ -316,5 +320,32 @@ export class ProductsRepository {
       },
     });
     return !!business;
+  }
+
+  async incrementViewCount(productId: string) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-12
+
+    await this.prisma.productViewStat.upsert({
+      where: {
+        productId_year_month: {
+          productId,
+          year,
+          month,
+        },
+      },
+      update: {
+        viewCount: {
+          increment: 1,
+        },
+      },
+      create: {
+        productId,
+        year,
+        month,
+        viewCount: 1,
+      },
+    });
   }
 }

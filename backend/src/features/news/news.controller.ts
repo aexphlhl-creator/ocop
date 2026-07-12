@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards , ParseUUIDPipe} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { NewsService } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
@@ -58,7 +58,7 @@ export class NewsController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không có quyền cập nhật' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy bài viết' })
-  async update(@Param('id') id: string, @Body() dto: UpdateNewsDto) {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateNewsDto) {
     return this.newsService.update(id, dto);
   }
 
@@ -71,7 +71,7 @@ export class NewsController {
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không có quyền xóa' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy bài viết' })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.newsService.remove(id);
   }
 }

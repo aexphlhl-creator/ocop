@@ -12,6 +12,8 @@ import { seedCategories } from './seeds/categories.seed';
 import { seedProducts } from './seeds/products.seed';
 import { seedNews } from './seeds/news.seed';
 import { seedOcopLevels } from './seeds/ocop-levels.seed';
+import { seedSupplyChainStages } from './seeds/supply-chain-stages.seed';
+import { seedCertificateTypes } from './seeds/certificate-types.seed';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -64,6 +66,13 @@ async function main() {
       'admin@ocop.gov.vn': adminUser,
     });
     console.log(`✓ News seeded (${newsCount})`);
+
+    // 5. Seed Supply Chain Stages (lookup data)
+    const stageCount = await seedSupplyChainStages(prisma);
+    console.log(`✓ Supply Chain Stages seeded (${stageCount})`);
+
+    const certificateTypeCount = await seedCertificateTypes(prisma);
+    console.log(`✓ Certificate Types seeded (${certificateTypeCount})`);
 
     console.log('\nDatabase seeded successfully.');
   } catch (error: any) {

@@ -69,6 +69,15 @@ export class BusinessesRepository {
               name: true,
             },
           },
+          _count: {
+            select: {
+              products: {
+                where: {
+                  deletedAt: null,
+                },
+              },
+            },
+          },
         },
       }),
       this.prisma.business.count({ where }),
@@ -122,6 +131,15 @@ export class BusinessesRepository {
     return this.prisma.business.findFirst({
       where: {
         taxCode,
+        deletedAt: null,
+      },
+    });
+  }
+
+  async findByUserId(userId: string) {
+    return this.prisma.business.findFirst({
+      where: {
+        userId,
         deletedAt: null,
       },
     });

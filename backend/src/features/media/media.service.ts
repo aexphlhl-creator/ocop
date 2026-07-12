@@ -15,7 +15,9 @@ export class MediaService implements OnModuleInit {
       accessKey: this.configService.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
       secretKey: this.configService.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
     });
-    this.bucketName = this.configService.get<string>('MINIO_BUCKET_NAME', 'ocop-vietnam');
+    this.bucketName =
+      this.configService.get<string>('MINIO_BUCKET') ??
+      this.configService.get<string>('MINIO_BUCKET_NAME', 'ocop-vietnam');
   }
 
   async onModuleInit() {
@@ -49,9 +51,20 @@ export class MediaService implements OnModuleInit {
     }
 
     // 2. Validate Mime type (415 Unsupported Media Type)
-    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+      'application/pdf', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
     if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new UnsupportedMediaTypeException('Chỉ cho phép tải lên định dạng ảnh: jpg, jpeg, png, webp');
+      throw new UnsupportedMediaTypeException('Chỉ cho phép tải lên định dạng: jpg, jpeg, png, webp, pdf, doc, docx');
+    }
+
+    // 2.5. Validate Extension strictly to prevent MIME spoofing
+    const fileExt = (file.originalname.split('.').pop() || '').toLowerCase();
+    const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'];
+    if (!allowedExtensions.includes(fileExt)) {
+      throw new UnsupportedMediaTypeException(`Đuôi file .${fileExt} không được phép`);
     }
 
     // 3. Validate size (413 Payload Too Large - 10MB)
@@ -61,7 +74,6 @@ export class MediaService implements OnModuleInit {
     }
 
     // 4. Tạo Object Name ngẫu nhiên tránh trùng lặp
-    const fileExt = file.originalname.split('.').pop() || 'png';
     const randomName = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const objectName = `${folder}/${randomName}.${fileExt}`;
 

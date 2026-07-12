@@ -1,0 +1,81 @@
+[
+  {
+    "inputs": [
+      { "internalType": "string", "name": "productId", "type": "string" }
+    ],
+    "name": "getProductRecords",
+    "outputs": [
+      {
+        "components": [
+          { "internalType": "string", "name": "productId", "type": "string" },
+          { "internalType": "string", "name": "batchId", "type": "string" },
+          { "internalType": "bytes32", "name": "metadataHash", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "documentHash", "type": "bytes32" },
+          { "internalType": "string", "name": "action", "type": "string" },
+          { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+          { "internalType": "address", "name": "recorder", "type": "address" }
+        ],
+        "internalType": "struct TraceabilityRegistry.TraceabilityRecord[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "batchId", "type": "string" }
+    ],
+    "name": "getBatchRecords",
+    "outputs": [
+      {
+        "components": [
+          { "internalType": "string", "name": "productId", "type": "string" },
+          { "internalType": "string", "name": "batchId", "type": "string" },
+          { "internalType": "bytes32", "name": "metadataHash", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "documentHash", "type": "bytes32" },
+          { "internalType": "string", "name": "action", "type": "string" },
+          { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+          { "internalType": "address", "name": "recorder", "type": "address" }
+        ],
+        "internalType": "struct TraceabilityRegistry.TraceabilityRecord[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "recorder", "type": "address" }
+    ],
+    "name": "grantRecorder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "recorder", "type": "address" }
+    ],
+    "name": "revokeRecorder",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "productId", "type": "string" },
+      { "internalType": "string", "name": "batchId", "type": "string" },
+      { "internalType": "bytes32", "name": "metadataHash", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "documentHash", "type": "bytes32" },
+      { "internalType": "string", "name": "action", "type": "string" }
+    ],
+    "name": "recordTraceability",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
