@@ -18,6 +18,7 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
   private readonly bucketName: string;
   private readonly maxSizeBytes = 20 * 1024 * 1024;
   private readonly allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+  private initialized = false;
 
   constructor(private readonly configService: ConfigService) {
     this.client = new Client({
@@ -41,6 +42,23 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
       }
     } catch (error) {
       this.logger.error('Không thể khởi tạo bucket MinIO cho certificate storage', error);
+      throw error;
+    }
+  }
+
+  async initialize() {
+    if (this.initialized) {
+      return;
+    }
+
+    try {
+      const exists = await this.client.bucketExists(this.bucketName);
+      if (!exists) {
+        await this.client.makeBucket(this.bucketName, 'us-east-1');
+      }
+      this.initialized = true;
+    } catch (error) {
+      this.logger.error('Failed to initialize MinIO bucket for certificate storage', error);
       throw error;
     }
   }

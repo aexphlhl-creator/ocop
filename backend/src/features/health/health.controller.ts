@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Logger } from '@nestjs/common';
 import { HealthCheckService, PrismaHealthIndicator, HealthCheck } from '@nestjs/terminus';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -8,6 +8,8 @@ import { BLOCKCHAIN_QUEUE_NAME, createBlockchainQueueConnection } from '../block
 
 @Controller('health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
+
   constructor(
     private health: HealthCheckService,
     private prismaHealth: PrismaHealthIndicator,
@@ -42,6 +44,11 @@ export class HealthController {
       },
       async () => {
         const start = Date.now();
+        if (this.configService.get<boolean>('DEMO_MODE', false)) {
+          this.logger.log('[HealthController] DEMO_MODE=true -> Skip MinIO readiness check');
+          return { minio: { status: 'up', skipped: true, latency: Date.now() - start } };
+        }
+
         let isUp = false;
         const endpoint = this.configService.get('MINIO_ENDPOINT');
         try {

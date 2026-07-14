@@ -13,38 +13,35 @@ import { Client } from 'minio';
 export class MediaService implements OnModuleInit {
   private readonly logger = new Logger(MediaService.name);
 
-  private readonly minioClient: Client;
+  private minioClient?: Client;
   private readonly bucketName: string;
   private readonly demoMode: boolean;
 
   constructor(private readonly configService: ConfigService) {
     this.demoMode = this.configService.get<boolean>('DEMO_MODE', false);
-
-    this.minioClient = new Client({
-      endPoint: this.configService.get<string>('MINIO_ENDPOINT', 'localhost'),
-      port: Number(this.configService.get<number>('MINIO_PORT', 9000)),
-      useSSL: this.configService.get<boolean>('MINIO_USE_SSL', false),
-      accessKey: this.configService.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
-      secretKey: this.configService.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
-    });
-
     this.bucketName =
       this.configService.get<string>('MINIO_BUCKET') ??
       this.configService.get<string>('MINIO_BUCKET_NAME', 'ocop-vietnam');
+
+    if (this.demoMode) {
+      this.logger.log('[MediaService] DEMO_MODE=true -> Skip MinIO client initialization');
+      return;
+    }
+
+    this.minioClient = this.createMinioClient();
   }
 
   async onModuleInit() {
-    // Demo mode => không kết nối MinIO
     if (this.demoMode) {
-      this.logger.log('DEMO_MODE=true, bỏ qua khởi tạo MinIO.');
+      this.logger.log('[MediaService] DEMO_MODE=true -> Skip MinIO bucket initialization');
       return;
     }
 
     try {
-      const bucketExists = await this.minioClient.bucketExists(this.bucketName);
+      const bucketExists = await this.getMinioClient().bucketExists(this.bucketName);
 
       if (!bucketExists) {
-        await this.minioClient.makeBucket(this.bucketName, 'us-east-1');
+        await this.getMinioClient().makeBucket(this.bucketName, 'us-east-1');
 
         const policy = {
           Version: '2012-10-17',
@@ -58,17 +55,17 @@ export class MediaService implements OnModuleInit {
           ],
         };
 
-        await this.minioClient.setBucketPolicy(
+        await this.getMinioClient().setBucketPolicy(
           this.bucketName,
           JSON.stringify(policy),
         );
 
-        this.logger.log(`Đã tạo bucket ${this.bucketName}`);
+        this.logger.log(`Created MinIO bucket ${this.bucketName}`);
       } else {
-        this.logger.log(`Bucket ${this.bucketName} đã tồn tại`);
+        this.logger.log(`MinIO bucket ${this.bucketName} already exists`);
       }
     } catch (err) {
-      this.logger.error('Lỗi khi cấu hình bucket MinIO', err);
+      this.logger.error('Failed to configure MinIO bucket', err);
       throw err;
     }
   }
@@ -78,13 +75,14 @@ export class MediaService implements OnModuleInit {
     folder = 'products',
   ) {
     if (this.demoMode) {
+      this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO upload');
       throw new BadRequestException(
-        'Tính năng upload bị tắt ở chế độ DEMO.',
+        'Upload is disabled in demo mode.',
       );
     }
 
     if (!file) {
-      throw new BadRequestException('Không tìm thấy file tải lên');
+      throw new BadRequestException('No upload file was provided');
     }
 
     const allowedMimeTypes = [
@@ -99,7 +97,7 @@ export class MediaService implements OnModuleInit {
 
     if (!allowedMimeTypes.includes(file.mimetype)) {
       throw new UnsupportedMediaTypeException(
-        'Chỉ cho phép jpg, jpeg, png, webp, pdf, doc, docx',
+        'Only jpg, jpeg, png, webp, pdf, doc, and docx files are allowed',
       );
     }
 
@@ -117,7 +115,7 @@ export class MediaService implements OnModuleInit {
 
     if (!allowedExtensions.includes(fileExt)) {
       throw new UnsupportedMediaTypeException(
-        `Đuôi file .${fileExt} không được phép`,
+        `File extension .${fileExt} is not allowed`,
       );
     }
 
@@ -125,7 +123,7 @@ export class MediaService implements OnModuleInit {
 
     if (file.size > maxSizeBytes) {
       throw new PayloadTooLargeException(
-        'Kích thước file vượt quá giới hạn 10MB',
+        'File size exceeds the 10MB limit',
       );
     }
 
@@ -133,7 +131,7 @@ export class MediaService implements OnModuleInit {
 
     const objectName = `${folder}/${randomName}.${fileExt}`;
 
-    await this.minioClient.putObject(
+    await this.getMinioClient().putObject(
       this.bucketName,
       objectName,
       file.buffer,
@@ -153,26 +151,32 @@ export class MediaService implements OnModuleInit {
 
   async deleteImage(objectName: string): Promise<void> {
     if (this.demoMode) {
+      this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO delete');
       return;
     }
 
     if (!objectName) {
-      throw new BadRequestException('objectName là bắt buộc');
+      throw new BadRequestException('objectName is required');
     }
 
     try {
-      await this.minioClient.removeObject(
+      await this.getMinioClient().removeObject(
         this.bucketName,
         objectName,
       );
     } catch (err) {
       throw new BadRequestException(
-        `Không thể xóa object "${objectName}" khỏi MinIO: ${err.message}`,
+        `Unable to delete object "${objectName}" from MinIO: ${err.message}`,
       );
     }
   }
 
   generatePublicUrl(objectName: string): string {
+    if (this.demoMode) {
+      this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO public URL generation');
+      return objectName;
+    }
+
     const endPoint = this.configService.get<string>(
       'MINIO_ENDPOINT',
       'localhost',
@@ -194,5 +198,22 @@ export class MediaService implements OnModuleInit {
     }
 
     return `${protocol}://${endPoint}:${port}/${this.bucketName}/${objectName}`;
+  }
+
+  private createMinioClient(): Client {
+    return new Client({
+      endPoint: this.configService.get<string>('MINIO_ENDPOINT', 'localhost'),
+      port: Number(this.configService.get<number>('MINIO_PORT', 9000)),
+      useSSL: this.configService.get<boolean>('MINIO_USE_SSL', false),
+      accessKey: this.configService.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
+      secretKey: this.configService.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
+    });
+  }
+
+  private getMinioClient(): Client {
+    if (!this.minioClient) {
+      this.minioClient = this.createMinioClient();
+    }
+    return this.minioClient;
   }
 }

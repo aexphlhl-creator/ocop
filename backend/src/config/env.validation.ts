@@ -68,8 +68,8 @@ export class EnvironmentVariables {
   REDIS_DB = 0;
 
   @IsString()
-  @IsNotEmpty()
-  MINIO_ENDPOINT: string;
+  @IsOptional()
+  MINIO_ENDPOINT?: string;
 
   @IsNumber()
   @IsOptional()
@@ -84,12 +84,12 @@ export class EnvironmentVariables {
   MINIO_USE_SSL = false;
 
   @IsString()
-  @IsNotEmpty()
-  MINIO_ACCESS_KEY: string;
+  @IsOptional()
+  MINIO_ACCESS_KEY?: string;
 
   @IsString()
-  @IsNotEmpty()
-  MINIO_SECRET_KEY: string;
+  @IsOptional()
+  MINIO_SECRET_KEY?: string;
 
   @IsString()
   @IsOptional()
@@ -144,15 +144,35 @@ export function validate(config: Record<string, any>) {
     throw new Error('Environment validation failed: REDIS_URL or REDIS_HOST is required');
   }
 
+  const isDemoMode = validatedConfig.DEMO_MODE === true;
   const minioBucket = config.MINIO_BUCKET ?? config.MINIO_BUCKET_NAME;
-  if (!minioBucket || String(minioBucket).trim().length === 0) {
-    throw new Error('Environment validation failed: MINIO_BUCKET is required');
+  if (!isDemoMode) {
+    validateMinioConfig(config, minioBucket);
   }
 
-  validatedConfig.MINIO_BUCKET = minioBucket;
-  validatedConfig.MINIO_BUCKET_NAME = minioBucket;
+  if (minioBucket) {
+    validatedConfig.MINIO_BUCKET = minioBucket;
+    validatedConfig.MINIO_BUCKET_NAME = minioBucket;
+  }
   validateBlockchainConfig(config);
   return validatedConfig;
+}
+
+function validateMinioConfig(config: Record<string, any>, minioBucket: unknown) {
+  const required = [
+    ['MINIO_ENDPOINT', config.MINIO_ENDPOINT],
+    ['MINIO_ACCESS_KEY', config.MINIO_ACCESS_KEY],
+    ['MINIO_SECRET_KEY', config.MINIO_SECRET_KEY],
+    ['MINIO_BUCKET', minioBucket],
+  ];
+
+  const missing = required
+    .filter(([, value]) => !value || String(value).trim().length === 0)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    throw new Error(`Environment validation failed: missing MinIO env ${missing.join(', ')}`);
+  }
 }
 
 function validateBlockchainConfig(config: Record<string, any>) {
