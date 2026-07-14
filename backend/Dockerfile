@@ -34,6 +34,10 @@ RUN npx prisma generate
 # Copy built assets from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
+# ★ THÊM MỚI: copy entrypoint script và cấp quyền thực thi (phải làm khi còn là root)
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 # Use non-root user
 USER node
 
@@ -46,6 +50,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:3000/health/live || exit 1
 
-# Start via tini
-ENTRYPOINT ["/sbin/tini", "--"]
+# ★ SỬA: entrypoint giờ chạy qua tini -> script -> node
+ENTRYPOINT ["/sbin/tini", "--", "./entrypoint.sh"]
 CMD ["node", "dist/src/main"]
