@@ -26,6 +26,7 @@ WORKDIR /usr/src/app
 
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # Install only production dependencies
 RUN npm ci --omit=dev && npm cache clean --force
