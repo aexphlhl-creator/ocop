@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Search, Loader2 } from 'lucide-react';
+import { MapPin, Loader2 } from 'lucide-react';
 import { Input } from './input';
 
 interface AddressAutocompleteProps {
@@ -11,16 +11,14 @@ interface AddressAutocompleteProps {
   className?: string;
 }
 
+interface AddressSuggestion { display_name: string; name?: string }
+
 export function AddressAutocomplete({ value, onChange, placeholder, className }: AddressAutocompleteProps) {
-  const [query, setQuery] = useState(value);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const query = value;
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setQuery(value);
-  }, [value]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -54,9 +52,8 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
     return () => clearTimeout(debounceTimer);
   }, [query, value]);
 
-  const handleSelect = (suggestion: any) => {
+  const handleSelect = (suggestion: AddressSuggestion) => {
     const addressName = suggestion.display_name;
-    setQuery(addressName);
     onChange(addressName);
     setShowDropdown(false);
   };
@@ -69,7 +66,6 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
           type="text"
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value);
             onChange(e.target.value); // Sync out directly so they can just type
             setShowDropdown(true);
           }}

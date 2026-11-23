@@ -1,13 +1,16 @@
 'use client';
 
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
 import { api } from '../../../../services/api';
 import { useCurrentUser } from '../../../../hooks/use-auth';
+import { useAuthStore } from '../../../../stores/auth.store';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
@@ -22,9 +25,11 @@ const profileSchema = z.object({
 });
 
 const passwordSchema = z.object({
-  currentPassword: z.string().min(6, 'Mật khẩu hiện tại phải dài ít nhất 6 ký tự'),
-  newPassword: z.string().min(6, 'Mật khẩu mới phải dài ít nhất 6 ký tự'),
-  confirmPassword: z.string().min(6, 'Xác nhận mật khẩu phải dài ít nhất 6 ký tự'),
+  currentPassword: z.string().min(1, 'Vui lòng nhập mật khẩu hiện tại'),
+  newPassword: z.string().min(8, 'Mật khẩu mới phải dài ít nhất 8 ký tự')
+    .max(72, 'Mật khẩu mới không được dài quá 72 ký tự')
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, 'Cần có chữ hoa, chữ thường và chữ số'),
+  confirmPassword: z.string().min(8, 'Xác nhận mật khẩu phải dài ít nhất 8 ký tự'),
 }).refine((d) => d.newPassword === d.confirmPassword, {
   message: 'Mật khẩu xác nhận không khớp',
   path: ['confirmPassword'],
@@ -36,17 +41,24 @@ type PasswordFormValues = z.infer<typeof passwordSchema>;
 const roleLabels: Record<string, string> = {
   ADMIN: 'Quản trị hệ thống',
   SELLER: 'Chủ thể sản xuất',
+  WAREHOUSE_MANAGER: 'Quản lý kho',
+  QUALITY_ASSURANCE: 'QA/QC độc lập',
+  LOGISTICS: 'Tài khoản vận chuyển cũ',
   VISITOR: 'Người tiêu dùng',
 };
 
 const roleVariants: Record<string, 'success' | 'info' | 'default'> = {
   ADMIN: 'success',
   SELLER: 'info',
+  WAREHOUSE_MANAGER: 'success',
+  QUALITY_ASSURANCE: 'success',
+  LOGISTICS: 'info',
   VISITOR: 'default',
 };
 
 export default function DashboardProfilePage() {
   const { user: currentUser, isLoading } = useCurrentUser();
+  const queryClient = useQueryClient();
   const [profileSaved, setProfileSaved] = useState(false);
 
   const {
@@ -79,8 +91,8 @@ export default function DashboardProfilePage() {
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3000);
     },
-    onError: (err: any) =>
-      toast.error(err.response?.data?.message || 'Không thể cập nhật thông tin'),
+    onError: (err: unknown) =>
+      toast.error(getErrorMessage(err, 'Không thể cập nhật thông tin')),
   });
 
   // Change password mutation
@@ -92,10 +104,16 @@ export default function DashboardProfilePage() {
       }),
     onSuccess: () => {
       toast.success('Đổi mật khẩu thành công!');
+      useAuthStore.setState((state) => ({
+        user: state.user ? { ...state.user, mustChangePassword: false } : null,
+      }));
+      queryClient.setQueryData(['currentUser'], (cached: typeof currentUser) =>
+        cached ? { ...cached, mustChangePassword: false } : cached,
+      );
       resetPassword();
     },
-    onError: (err: any) =>
-      toast.error(err.response?.data?.message || 'Mật khẩu hiện tại không đúng'),
+    onError: (err: unknown) =>
+      toast.error(getErrorMessage(err, 'Mật khẩu hiện tại không đúng')),
   });
 
   if (isLoading) {
@@ -108,6 +126,11 @@ export default function DashboardProfilePage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
+      {currentUser?.mustChangePassword && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          Đây là mật khẩu tạm do Admin cấp. Bạn phải đổi mật khẩu trước khi sử dụng các chức năng nghiệp vụ.
+        </div>
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}

@@ -48,10 +48,10 @@ export class ReviewsService {
     if (!review) {
       throw new NotFoundException('Không tìm thấy đánh giá');
     }
-    
+
     // Update product stats after deleting review
     await this.reviewsRepository.updateProductStats(review.productId);
-    
+
     return { success: true, message: 'Xóa đánh giá thành công' };
   }
 }

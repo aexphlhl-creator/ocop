@@ -48,7 +48,9 @@ export class GetCertificatesQueryDto {
   @IsOptional()
   expiryTo?: string;
 
-  @ApiPropertyOptional({ description: 'Tìm theo mã chứng nhận hoặc tổ chức cấp' })
+  @ApiPropertyOptional({
+    description: 'Tìm theo mã chứng nhận hoặc tổ chức cấp',
+  })
   @IsString()
   @IsOptional()
   search?: string;

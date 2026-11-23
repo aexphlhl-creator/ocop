@@ -1,0 +1,62 @@
+{
+  "Rules": [
+    {
+      "ID": "PruneHourlyBackupsAfter7Days",
+      "Filter": {
+        "Prefix": "hourly/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 7
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 7
+      }
+    },
+    {
+      "ID": "PruneDailyBackupsAfter30Days",
+      "Filter": {
+        "Prefix": "daily/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 30
+      }
+    },
+    {
+      "ID": "PruneWeeklyBackupsAfter90Days",
+      "Filter": {
+        "Prefix": "weekly/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 90
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      }
+    },
+    {
+      "ID": "TransitionMonthlyToGlacierAndPruneAfter365Days",
+      "Filter": {
+        "Prefix": "monthly/"
+      },
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 90,
+          "StorageClass": "GLACIER"
+        }
+      ],
+      "Expiration": {
+        "Days": 365
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 365
+      }
+    }
+  ]
+}

@@ -9,7 +9,7 @@ export class DashboardRepository {
   async getCounts() {
     const [
       users,
-      businesses,
+      sellers,
       products,
       approvedProducts,
       pendingProducts,
@@ -20,11 +20,17 @@ export class DashboardRepository {
       news,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.business.count({ where: { deletedAt: null } }),
+      this.prisma.sellerProfile.count(),
       this.prisma.product.count({ where: { deletedAt: null } }),
-      this.prisma.product.count({ where: { deletedAt: null, status: ProductStatus.APPROVED } }),
-      this.prisma.product.count({ where: { deletedAt: null, status: ProductStatus.PENDING } }),
-      this.prisma.product.count({ where: { deletedAt: null, status: ProductStatus.REJECTED } }),
+      this.prisma.product.count({
+        where: { deletedAt: null, status: ProductStatus.APPROVED },
+      }),
+      this.prisma.product.count({
+        where: { deletedAt: null, status: ProductStatus.PENDING },
+      }),
+      this.prisma.product.count({
+        where: { deletedAt: null, status: ProductStatus.REJECTED },
+      }),
       this.prisma.province.count(),
       this.prisma.ward.count(),
       this.prisma.category.count(),
@@ -33,7 +39,7 @@ export class DashboardRepository {
 
     return {
       users,
-      businesses,
+      sellers,
       products,
       approvedProducts,
       pendingProducts,

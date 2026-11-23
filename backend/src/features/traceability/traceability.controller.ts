@@ -1,4 +1,4 @@
-import { Controller, Get, Param , ParseUUIDPipe} from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TraceabilityService } from './traceability.service';
 
@@ -7,8 +7,18 @@ import { TraceabilityService } from './traceability.service';
 export class TraceabilityController {
   constructor(private readonly traceabilityService: TraceabilityService) {}
 
+  @Get('batch/:batchId')
+  @ApiOperation({
+    summary: 'Truy xuất production theo đúng một batch/lot',
+  })
+  getBatchTraceability(@Param('batchId', ParseUUIDPipe) batchId: string) {
+    return this.traceabilityService.getBatchTraceability(batchId);
+  }
+
   @Get(':productId')
-  @ApiOperation({ summary: 'Aggregation endpoint chuẩn bị cho QR Traceability 2.0' })
+  @ApiOperation({
+    summary: 'Aggregation endpoint chuẩn bị cho QR Traceability 2.0',
+  })
   getProductTraceability(@Param('productId', ParseUUIDPipe) productId: string) {
     return this.traceabilityService.getProductTraceability(productId);
   }

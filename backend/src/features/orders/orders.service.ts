@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  GoneException,
   Logger,
 } from '@nestjs/common';
 import { OrdersRepository } from './orders.repository';
@@ -10,13 +11,14 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { RequestUser } from '../auth/interfaces/jwt-payload.interface';
-import { OrderStatus, RoleName, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, RoleName, Prisma } from '@prisma/client';
 import { ProductsRepository } from '../products/products.repository';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupplyChainService } from '../supply-chain/supply-chain.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { createPaginationResponse } from '../../common/pagination/pagination.helper';
+import { InventoryReservationService } from './inventory-reservation.service';
 
 @Injectable()
 export class OrdersService {
@@ -29,11 +31,19 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly supplyChainService: SupplyChainService,
     private readonly notificationsService: NotificationsService,
+    private readonly inventoryReservations: InventoryReservationService,
   ) {}
 
   // ── Create Order (with inventory reserve) ────────────────────────────────
 
-  async create(dto: CreateOrderDto, user: RequestUser, ipAddress?: string) {
+  create(dto: CreateOrderDto, user: RequestUser, ipAddress?: string) {
+    void dto;
+    void user;
+    void ipAddress;
+    throw new GoneException(
+      'Endpoint tạo đơn cũ đã ngừng hoạt động. Sử dụng POST /api/v1/orders/checkout',
+    );
+    /* Legacy implementation retained temporarily for migration reference.
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Giỏ hàng trống');
     }
@@ -51,7 +61,9 @@ export class OrdersService {
     for (const item of dto.items) {
       const product = await this.productsRepository.findById(item.productId);
       if (!product) {
-        throw new NotFoundException(`Không tìm thấy sản phẩm ID ${item.productId}`);
+        throw new NotFoundException(
+          `Không tìm thấy sản phẩm ID ${item.productId}`,
+        );
       }
 
       const price = Number(product.price);
@@ -72,7 +84,8 @@ export class OrdersService {
       });
 
       if (inventory) {
-        const available = inventory.currentQuantity - inventory.reservedQuantity;
+        const available =
+          inventory.currentQuantity - inventory.reservedQuantity;
         if (available < item.quantity) {
           throw new BadRequestException(
             `Sản phẩm "${product.name}" không đủ tồn kho. Khả dụng: ${available}, Yêu cầu: ${item.quantity}`,
@@ -165,7 +178,10 @@ export class OrdersService {
         orderData.shopVoucher = { connect: { id: shopVoucherId } };
       }
 
-      const newOrder = await tx.order.create({ data: orderData, include: { items: true } });
+      const newOrder = await tx.order.create({
+        data: orderData,
+        include: { items: true },
+      });
 
       // Reserve inventory: increment reservedQuantity
       for (const item of resolvedItems) {
@@ -182,16 +198,21 @@ export class OrdersService {
 
       // Increment voucher usage
       if (platformVoucherId) {
-        await this.vouchersService['vouchersRepository'].incrementUsage(platformVoucherId);
+        await this.vouchersService['vouchersRepository'].incrementUsage(
+          platformVoucherId,
+        );
       }
       if (shopVoucherId) {
-        await this.vouchersService['vouchersRepository'].incrementUsage(shopVoucherId);
+        await this.vouchersService['vouchersRepository'].incrementUsage(
+          shopVoucherId,
+        );
       }
 
       return newOrder;
     });
 
     return this.ordersRepository.findById(order.id);
+    */
   }
 
   // ── Query helpers ────────────────────────────────────────────────────────
@@ -201,11 +222,11 @@ export class OrdersService {
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.OrderWhereInput = {};
 
     if (query.status) where.status = query.status;
     if (query.customerId) where.userId = query.customerId;
-    if (query.businessId) where.businessId = query.businessId;
+    if (query.sellerId) where.sellerId = query.sellerId;
 
     if (query.dateFrom || query.dateTo) {
       where.createdAt = {};
@@ -220,16 +241,9 @@ export class OrdersService {
       ];
     }
 
-    // Seller can only see their own business orders
+    // Seller chỉ xem đơn hàng thuộc tài khoản của chính họ.
     if (user.role === RoleName.SELLER) {
-      const business = await this.prisma.business.findFirst({
-        where: { userId: user.id },
-      });
-      if (business) {
-        where.businessId = business.id;
-      } else {
-        return createPaginationResponse([], 0, page, limit);
-      }
+      where.sellerId = user.id;
     } else if (user.role === RoleName.VISITOR) {
       // User can only see their own orders
       where.userId = user.id;
@@ -244,13 +258,57 @@ export class OrdersService {
         include: {
           items: {
             include: {
-              product: { select: { id: true, name: true, images: { take: 1 } } },
-              reservedBatch: { select: { id: true, batchNumber: true } },
+              product: {
+                select: { id: true, name: true, images: { take: 1 } },
+              },
+              batchReservations: {
+                select: {
+                  quantity: true,
+                  status: true,
+                  batch: { select: { id: true, batchNumber: true } },
+                },
+              },
             },
           },
-          user: { select: { id: true, fullName: true, email: true, phone: true } },
-          business: { select: { id: true, name: true } },
+          user: {
+            select: { id: true, fullName: true, email: true, phone: true },
+          },
+          seller: {
+            select: { id: true, fullName: true, sellerProfile: true },
+          },
           tracking: { orderBy: { createdAt: 'asc' } },
+          shipments: {
+            include: {
+              carrierOrganization: {
+                select: {
+                  id: true,
+                  code: true,
+                  name: true,
+                  providerCode: true,
+                  trackingUrlTemplate: true,
+                },
+              },
+              events: {
+                orderBy: [{ eventTime: 'asc' }, { createdAt: 'asc' }],
+                select: {
+                  id: true,
+                  eventType: true,
+                  source: true,
+                  fromStatus: true,
+                  toStatus: true,
+                  eventTime: true,
+                  location: true,
+                  recipientName: true,
+                  failureReason: true,
+                  note: true,
+                  imageUrls: true,
+                  attachmentUrls: true,
+                  createdAt: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
         },
       }),
       this.prisma.order.count({ where }),
@@ -277,11 +335,10 @@ export class OrdersService {
         throw new ForbiddenException('Bạn không có quyền xem đơn hàng này');
       }
       if (user.role === RoleName.SELLER) {
-        const business = await this.prisma.business.findFirst({
-          where: { userId: user.id },
-        });
-        if (!business || order.businessId !== business.id) {
-          throw new ForbiddenException('Bạn không có quyền xem đơn hàng của gian hàng khác');
+        if (order.sellerId !== user.id) {
+          throw new ForbiddenException(
+            'Bạn không có quyền xem đơn hàng của gian hàng khác',
+          );
         }
       }
     }
@@ -297,49 +354,184 @@ export class OrdersService {
     user: RequestUser,
     ipAddress?: string,
   ) {
-    const order = await this.prisma.order.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: true,
-            reservedBatch: { include: { inventory: true } },
+    const newStatus = dto.status;
+    const description = this.buildDescription(dto, newStatus);
+    const order = await this.prisma.$transaction(async (tx) => {
+      const lockMetadata = await tx.order.findUnique({
+        where: { id },
+        select: {
+          paymentAggregateId: true,
+          paymentMethod: true,
+        },
+      });
+      if (!lockMetadata) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+
+      // Keep the same deterministic lock order as IPN/reconciliation:
+      // aggregate -> transactions -> orders. This prevents a cancellation
+      // racing a successful payment from releasing reservations mid-capture.
+      if (lockMetadata.paymentAggregateId) {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "payment_aggregates"
+            WHERE "id" = ${lockMetadata.paymentAggregateId}::uuid FOR UPDATE`,
+        );
+        if (
+          newStatus === OrderStatus.CANCELLED &&
+          lockMetadata.paymentMethod === PaymentMethod.VNPAY
+        ) {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "payment_transactions"
+              WHERE "payment_aggregate_id" = ${lockMetadata.paymentAggregateId}::uuid
+              ORDER BY "id" FOR UPDATE`,
+          );
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "orders"
+              WHERE "payment_aggregate_id" = ${lockMetadata.paymentAggregateId}::uuid
+              ORDER BY "id" FOR UPDATE`,
+          );
+        } else {
+          await this.inventoryReservations.lockOrder(tx, id);
+        }
+      } else {
+        await this.inventoryReservations.lockOrder(tx, id);
+      }
+      const freshOrder = await tx.order.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              product: true,
+              batchReservations: { include: { batch: true } },
+            },
+          },
+          seller: { include: { sellerProfile: true } },
+          paymentAggregate: {
+            include: { orders: { select: { id: true, status: true } } },
           },
         },
-        business: { include: { user: true } },
-      },
-    });
+      });
+      if (!freshOrder) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
 
-    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+      const isBuyerCancelling =
+        user.id === freshOrder.userId && newStatus === OrderStatus.CANCELLED;
+      if (
+        user.role !== RoleName.ADMIN &&
+        freshOrder.sellerId !== user.id &&
+        !isBuyerCancelling
+      ) {
+        throw new ForbiddenException(
+          'Bạn không có quyền cập nhật đơn hàng này',
+        );
+      }
+      if (freshOrder.status === newStatus) {
+        throw new BadRequestException(
+          'Trạng thái mới phải khác trạng thái hiện tại',
+        );
+      }
+      this.validateStatusTransition(freshOrder.status, newStatus);
 
-    // Authorization: seller of this order, admin, or the buyer cancelling their own order
-    const isBuyerCancelling = user.id === order.userId && dto.status === OrderStatus.CANCELLED;
-    if (
-      user.role !== RoleName.ADMIN &&
-      order.business.userId !== user.id &&
-      !isBuyerCancelling
-    ) {
-      throw new ForbiddenException('Bạn không có quyền cập nhật đơn hàng này');
-    }
+      if (
+        newStatus === OrderStatus.CONFIRMED &&
+        freshOrder.paymentMethod === 'VNPAY' &&
+        freshOrder.paymentStatus !== 'COMPLETED'
+      ) {
+        throw new BadRequestException(
+          'Không thể xác nhận đơn VNPay trước khi IPN xác nhận thanh toán',
+        );
+      }
 
-    const oldStatus = order.status;
-    const newStatus = dto.status;
+      if (
+        (
+          [
+            OrderStatus.SHIPPED,
+            OrderStatus.DELIVERED,
+            OrderStatus.RETURNED,
+          ] as OrderStatus[]
+        ).includes(newStatus)
+      ) {
+        throw new BadRequestException(
+          'Trạng thái vận chuyển/giao hàng/hoàn hàng chỉ được cập nhật tự động từ Shipment và bằng chứng giao nhận',
+        );
+      }
 
-    if (oldStatus === newStatus) {
-      throw new BadRequestException('Trạng thái mới phải khác trạng thái hiện tại');
-    }
+      if (newStatus === OrderStatus.CANCELLED) {
+        const aggregate = freshOrder.paymentAggregate;
+        const activeShipmentCount = await tx.shipment.count({
+          where: {
+            status: { not: 'CANCELLED' },
+            ...(freshOrder.paymentMethod === 'VNPAY' && aggregate
+              ? { order: { paymentAggregateId: aggregate.id } }
+              : { orderId: id }),
+          },
+        });
+        if (activeShipmentCount > 0) {
+          throw new BadRequestException(
+            'Đơn đã có chuyến hàng; Warehouse Manager phải hủy chuyến trước khi hủy đơn',
+          );
+        }
+        if (
+          freshOrder.paymentMethod === 'VNPAY' &&
+          aggregate?.status === 'COMPLETED'
+        ) {
+          throw new BadRequestException(
+            'Đơn đã thanh toán phải đi qua quy trình hoàn tiền',
+          );
+        }
+        if (freshOrder.paymentMethod === 'VNPAY' && aggregate) {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT "id" FROM "payment_aggregates"
+              WHERE "id" = ${aggregate.id}::uuid FOR UPDATE`,
+          );
+          await this.inventoryReservations.releaseAggregate(tx, aggregate.id);
+          const siblings = await tx.order.findMany({
+            where: { paymentAggregateId: aggregate.id },
+            select: { id: true, status: true },
+            orderBy: { id: 'asc' },
+          });
+          for (const sibling of siblings) {
+            if (sibling.status === OrderStatus.CANCELLED) continue;
+            await tx.order.update({
+              where: { id: sibling.id },
+              data: {
+                status: OrderStatus.CANCELLED,
+                tracking: {
+                  create: {
+                    status: OrderStatus.CANCELLED,
+                    description: 'Hủy toàn bộ checkout VNPay chưa thanh toán',
+                    changedById: user.id,
+                    ipAddress: ipAddress ?? null,
+                  },
+                },
+              },
+            });
+          }
+          await tx.paymentTransaction.updateMany({
+            where: {
+              paymentAggregateId: aggregate.id,
+              status: 'PENDING',
+            },
+            data: { status: 'CANCELLED', processedAt: new Date() },
+          });
+          await tx.paymentAggregate.update({
+            where: { id: aggregate.id },
+            data: { status: 'CANCELLED', cancelledAt: new Date() },
+          });
+          return freshOrder;
+        }
+        await this.inventoryReservations.releaseOrder(tx, id);
+      }
 
-    // Validate transition
-    this.validateStatusTransition(oldStatus, newStatus, user.role);
-
-    const description = this.buildDescription(dto, newStatus);
-
-    await this.prisma.$transaction(async (tx) => {
-      // ── Update order status + add tracking entry ──────────────────────────
       await tx.order.update({
         where: { id },
         data: {
           status: newStatus,
+          ...(newStatus === OrderStatus.DELIVERED &&
+          freshOrder.paymentMethod === 'COD'
+            ? { paymentStatus: 'COMPLETED' }
+            : {}),
           tracking: {
             create: {
               status: newStatus,
@@ -351,88 +543,45 @@ export class OrdersService {
         },
       });
 
-      // ── CANCELLED: release reserved quantity ─────────────────────────────
-      if (newStatus === OrderStatus.CANCELLED) {
-        for (const item of order.items) {
-          if (item.reservedBatch?.inventoryId) {
-            await tx.inventory.update({
-              where: { id: item.reservedBatch.inventoryId },
-              data: { reservedQuantity: { decrement: item.quantity } },
-            });
-            this.logger.log(
-              `Released ${item.quantity} reserved units from inventory ${item.reservedBatch.inventoryId}`,
-            );
-          }
+      if (freshOrder.paymentAggregateId) {
+        const activeOrders = await tx.order.findMany({
+          where: {
+            paymentAggregateId: freshOrder.paymentAggregateId,
+            status: { not: OrderStatus.CANCELLED },
+          },
+          select: { status: true, totalAmount: true },
+        });
+        const activeAmount = activeOrders.reduce(
+          (total, sibling) => total.add(sibling.totalAmount),
+          new Prisma.Decimal(0),
+        );
+        if (newStatus === OrderStatus.CANCELLED) {
+          await tx.paymentAggregate.update({
+            where: { id: freshOrder.paymentAggregateId },
+            data:
+              activeOrders.length === 0
+                ? {
+                    amount: new Prisma.Decimal(0),
+                    status: 'CANCELLED',
+                    cancelledAt: new Date(),
+                  }
+                : { amount: activeAmount },
+          });
+        } else if (
+          freshOrder.paymentMethod === 'COD' &&
+          activeOrders.every((sibling) =>
+            (
+              [OrderStatus.DELIVERED, OrderStatus.RETURNED] as OrderStatus[]
+            ).includes(sibling.status),
+          )
+        ) {
+          await tx.paymentAggregate.update({
+            where: { id: freshOrder.paymentAggregateId },
+            data: { status: 'COMPLETED', completedAt: new Date() },
+          });
         }
       }
-
-      // ── SHIPPED: FIFO stock-out + release reserve + create StockMovements ─
-      if (newStatus === OrderStatus.SHIPPED) {
-        for (const item of order.items) {
-          // Find inventory for this product
-          const inventory = await tx.inventory.findFirst({
-            where: { productId: item.productId },
-          });
-
-          if (!inventory) continue;
-
-          // Get FIFO active batches
-          const batches = await tx.inventoryBatch.findMany({
-            where: { inventoryId: inventory.id, status: 'ACTIVE', quantity: { gt: 0 } },
-            orderBy: { receivedDate: 'asc' },
-          });
-
-          let remaining = item.quantity;
-
-          for (const batch of batches) {
-            if (remaining <= 0) break;
-
-            const deduct = Math.min(batch.quantity, remaining);
-            const newBatchQty = batch.quantity - deduct;
-
-            await tx.inventoryBatch.update({
-              where: { id: batch.id },
-              data: {
-                quantity: newBatchQty,
-                status: newBatchQty === 0 ? 'DEPLETED' : 'ACTIVE',
-              },
-            });
-
-            await tx.stockMovement.create({
-              data: {
-                inventory: { connect: { id: inventory.id } },
-                batch: { connect: { id: batch.id } },
-                movementType: 'OUT',
-                quantity: -deduct,
-                beforeQuantity: batch.quantity,
-                afterQuantity: newBatchQty,
-                referenceId: id,
-                referenceType: 'ORDER',
-                note: `Xuất kho cho đơn hàng`,
-                createdBy: { connect: { id: user.id } },
-              },
-            });
-
-            remaining -= deduct;
-          }
-
-          // Update inventory totals
-          const newCurrent = Math.max(0, inventory.currentQuantity - item.quantity);
-          const newReserved = Math.max(0, inventory.reservedQuantity - item.quantity);
-
-          await tx.inventory.update({
-            where: { id: inventory.id },
-            data: {
-              currentQuantity: newCurrent,
-              reservedQuantity: newReserved,
-            },
-          });
-
-          this.logger.log(
-            `FIFO stock-out: inventory ${inventory.id}, -${item.quantity} for order ${id}`,
-          );
-        }
-      }
+      return freshOrder;
     });
 
     // ── Auto Supply Chain Journey (outside transaction for isolation) ─────
@@ -445,7 +594,7 @@ export class OrdersService {
       `Đơn hàng #${shortId} được cập nhật`,
       `Trạng thái mới: ${newStatus}. ${description}`,
       'INFO',
-      '/profile/orders'
+      '/profile/orders',
     );
 
     return this.ordersRepository.findById(id);
@@ -456,9 +605,6 @@ export class OrdersService {
   async cancelOrder(id: string, user: RequestUser, ipAddress?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: {
-        items: { include: { reservedBatch: { include: { inventory: true } } } },
-      },
     });
 
     if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
@@ -468,7 +614,10 @@ export class OrdersService {
       throw new ForbiddenException('Bạn không có quyền hủy đơn hàng này');
     }
 
-    const cancelableStatuses: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
+    const cancelableStatuses: OrderStatus[] = [
+      OrderStatus.PENDING,
+      OrderStatus.CONFIRMED,
+    ];
     if (!cancelableStatuses.includes(order.status)) {
       throw new BadRequestException(
         'Chỉ có thể hủy đơn ở trạng thái Chờ xác nhận hoặc Đã xác nhận',
@@ -486,19 +635,18 @@ export class OrdersService {
   // ── Dashboard Stats ───────────────────────────────────────────────────────
 
   async getDashboardStats(user: RequestUser) {
-    const where: any = {};
+    const where: Prisma.OrderWhereInput = {};
 
     if (user.role === RoleName.SELLER) {
-      const business = await this.prisma.business.findFirst({
-        where: { userId: user.id },
-      });
-      if (business) {
-        where.businessId = business.id;
-      }
+      where.sellerId = user.id;
     }
 
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [
@@ -536,7 +684,11 @@ export class OrdersService {
     });
 
     const monthRevenueResult = await this.prisma.order.aggregate({
-      where: { ...where, status: 'DELIVERED', createdAt: { gte: startOfMonth } },
+      where: {
+        ...where,
+        status: 'DELIVERED',
+        createdAt: { gte: startOfMonth },
+      },
       _sum: { totalAmount: true },
     });
 
@@ -558,22 +710,19 @@ export class OrdersService {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  private validateStatusTransition(
-    from: OrderStatus,
-    to: OrderStatus,
-    role: RoleName,
-  ) {
+  private validateStatusTransition(from: OrderStatus, to: OrderStatus) {
     const transitions: Partial<Record<OrderStatus, OrderStatus[]>> = {
       PENDING: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       CONFIRMED: [OrderStatus.PACKING, OrderStatus.CANCELLED],
-      PACKING: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-      PROCESSING: [OrderStatus.SHIPPED, OrderStatus.CANCELLED], // legacy
-      SHIPPED: [OrderStatus.DELIVERED, OrderStatus.RETURNED],
+      PACKING: [OrderStatus.CANCELLED],
+      PROCESSING: [OrderStatus.CANCELLED], // legacy
+      SHIPPED: [],
       DELIVERED: [],
       CANCELLED: [],
       RETURNED: [],
     };
 
+    // eslint-disable-next-line security/detect-object-injection -- from is a validated OrderStatus enum and the table only contains enum keys.
     const allowed = transitions[from] ?? [];
     if (!allowed.includes(to)) {
       throw new BadRequestException(
@@ -582,13 +731,11 @@ export class OrdersService {
     }
   }
 
-  private buildDescription(dto: UpdateOrderStatusDto, status: OrderStatus): string {
+  private buildDescription(
+    dto: UpdateOrderStatusDto,
+    status: OrderStatus,
+  ): string {
     const base = dto.description ?? '';
-
-    if (status === OrderStatus.SHIPPED && dto.trackingCode) {
-      const partner = dto.shippingPartner ? `[${dto.shippingPartner}]` : '';
-      return `${partner} Mã vận đơn: ${dto.trackingCode}. ${base}`.trim();
-    }
 
     const defaults: Partial<Record<OrderStatus, string>> = {
       CONFIRMED: 'Đơn hàng đã được xác nhận',
@@ -599,6 +746,7 @@ export class OrdersService {
       RETURNED: 'Khách hàng đã hoàn trả hàng',
     };
 
+    // eslint-disable-next-line security/detect-object-injection -- status is a validated OrderStatus enum used only to read a fixed message table.
     return base || defaults[status] || status;
   }
 
@@ -606,9 +754,17 @@ export class OrdersService {
     orderId: string,
     status: OrderStatus,
     user: RequestUser,
-    order: any,
+    order: Prisma.OrderGetPayload<{
+      include: {
+        items: { include: { batchReservations: true } };
+        seller: { include: { sellerProfile: true } };
+      };
+    }> & { user?: { fullName: string } },
   ) {
-    const journeyStatuses: OrderStatus[] = [OrderStatus.SHIPPED, OrderStatus.DELIVERED];
+    const journeyStatuses: OrderStatus[] = [
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+    ];
     if (!journeyStatuses.includes(status)) return;
 
     try {
@@ -617,7 +773,7 @@ export class OrdersService {
         status === OrderStatus.SHIPPED ? 'SHIPPING' : 'CUSTOMER';
 
       const stage = await this.prisma.supplyChainStage.findUnique({
-        where: { name: stageName as any },
+        where: { name: stageName },
       });
 
       if (!stage) return;
@@ -627,7 +783,9 @@ export class OrdersService {
       const batchIds = new Set<string>();
 
       for (const item of items) {
-        if (item.reservedBatchId) batchIds.add(item.reservedBatchId);
+        for (const reservation of item.batchReservations ?? []) {
+          if (reservation.batchId) batchIds.add(reservation.batchId);
+        }
       }
 
       // If no reserved batches, try to find via inventory
@@ -637,7 +795,12 @@ export class OrdersService {
             where: { productId: item.productId },
             include: {
               batches: {
-                where: { status: status === OrderStatus.SHIPPED ? 'ACTIVE' : { in: ['ACTIVE', 'DEPLETED'] } },
+                where: {
+                  status:
+                    status === OrderStatus.SHIPPED
+                      ? 'ACTIVE'
+                      : { in: ['ACTIVE', 'DEPLETED'] },
+                },
                 orderBy: { receivedDate: 'asc' },
                 take: 1,
               },
@@ -649,13 +812,15 @@ export class OrdersService {
 
       const location =
         status === OrderStatus.SHIPPED
-          ? order.business?.address ?? 'Kho hàng'
-          : order.shippingAddress ?? 'Địa chỉ khách hàng';
+          ? (order.seller?.sellerProfile?.address ?? 'Kho hàng')
+          : (order.shippingAddress ?? 'Địa chỉ khách hàng');
 
       const actorName =
         status === OrderStatus.SHIPPED
-          ? order.business?.name ?? 'Nhà bán hàng'
-          : order.user?.fullName ?? 'Khách hàng';
+          ? (order.seller?.sellerProfile?.displayName ??
+            order.seller?.fullName ??
+            'Nhà bán hàng')
+          : (order.user?.fullName ?? 'Khách hàng');
 
       for (const batchId of batchIds) {
         await this.prisma.batchJourney.create({

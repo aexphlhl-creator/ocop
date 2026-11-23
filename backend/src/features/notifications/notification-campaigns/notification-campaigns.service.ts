@@ -1,31 +1,42 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { NotificationDispatcherService } from './notification-dispatcher.service';
 import { RequestUser } from '../../auth/interfaces/jwt-payload.interface';
-import { RoleName } from '@prisma/client';
+import { NotificationCampaignStatus, Prisma, RoleName } from '@prisma/client';
+import { createPaginationResponse } from '../../../common/pagination/pagination.helper';
 
 @Injectable()
 export class NotificationCampaignsService {
   constructor(
     private prisma: PrismaService,
-    private dispatcher: NotificationDispatcherService
+    private dispatcher: NotificationDispatcherService,
   ) {}
 
   async create(dto: CreateCampaignDto, user: RequestUser) {
     // 1. Resolve Target Audience Users
-    const targetUsers = await this.resolveTargetUsers(dto.targetAudience, dto.targetDetails);
-    
+    const targetUsers = await this.resolveTargetUsers(
+      dto.targetAudience,
+      dto.targetDetails,
+    );
+
     if (targetUsers.length === 0) {
-      throw new BadRequestException('Không tìm thấy người nhận nào phù hợp với đối tượng mục tiêu');
+      throw new BadRequestException(
+        'Không tìm thấy người nhận nào phù hợp với đối tượng mục tiêu',
+      );
     }
 
     // 2. Determine initial status
-    const isScheduled = !!dto.scheduledAt && new Date(dto.scheduledAt) > new Date();
+    const isScheduled =
+      !!dto.scheduledAt && new Date(dto.scheduledAt) > new Date();
     const status = isScheduled ? 'SCHEDULED' : 'SENDING';
 
     // 3. Create Campaign and Recipients transactionally
-    const campaign = await this.prisma.$transaction(async (tx: any) => {
+    const campaign = await this.prisma.$transaction(async (tx) => {
       const camp = await tx.notificationCampaign.create({
         data: {
           title: dto.title,
@@ -36,20 +47,21 @@ export class NotificationCampaignsService {
           scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : new Date(),
           status: status,
           totalRecipients: targetUsers.length,
-          createdById: user.id
-        }
+          createdById: user.id,
+        },
       });
 
       // Prepare recipient records
-      const recipientData = targetUsers.map((u: any) => ({
-        campaignId: camp.id,
-        userId: u.id,
-        deliveryStatus: 'PENDING' as any
-      }));
+      const recipientData: Prisma.NotificationRecipientCreateManyInput[] =
+        targetUsers.map((u) => ({
+          campaignId: camp.id,
+          userId: u.id,
+          deliveryStatus: 'PENDING',
+        }));
 
       // Create recipients
       await tx.notificationRecipient.createMany({
-        data: recipientData
+        data: recipientData,
       });
 
       return camp;
@@ -58,34 +70,43 @@ export class NotificationCampaignsService {
     // 4. Trigger Dispatcher immediately if not scheduled
     if (!isScheduled) {
       // Run async
-      this.dispatcher.dispatch(campaign.id).catch(e => console.error(e));
+      this.dispatcher.dispatch(campaign.id).catch((e) => console.error(e));
     }
 
     return campaign;
   }
 
-  async findAll(page: number = 1, limit: number = 10) {
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    status?: NotificationCampaignStatus,
+  ) {
     const skip = (page - 1) * limit;
-    
+
+    const where: Prisma.NotificationCampaignWhereInput = {};
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (status) {
+      where.status = status;
+    }
+
     const [items, total] = await Promise.all([
       this.prisma.notificationCampaign.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: { createdBy: { select: { fullName: true } } }
+        include: { createdBy: { select: { fullName: true } } },
       }),
-      this.prisma.notificationCampaign.count()
+      this.prisma.notificationCampaign.count({ where }),
     ]);
 
-    return {
-      data: items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit)
-      }
-    };
+    return createPaginationResponse(items, total, page, limit);
   }
 
   async findOne(id: string) {
@@ -93,8 +114,8 @@ export class NotificationCampaignsService {
       where: { id },
       include: {
         createdBy: { select: { fullName: true } },
-        event: { select: { title: true } }
-      }
+        event: { select: { title: true } },
+      },
     });
 
     if (!campaign) throw new NotFoundException('Không tìm thấy chiến dịch');
@@ -102,19 +123,28 @@ export class NotificationCampaignsService {
   }
 
   async cancel(id: string, user: RequestUser) {
+    void user;
     const campaign = await this.findOne(id);
     if (campaign.status !== 'DRAFT' && campaign.status !== 'SCHEDULED') {
-      throw new BadRequestException('Chỉ có thể hủy chiến dịch DRAFT hoặc SCHEDULED');
+      throw new BadRequestException(
+        'Chỉ có thể hủy chiến dịch DRAFT hoặc SCHEDULED',
+      );
     }
 
     return this.prisma.notificationCampaign.update({
       where: { id },
-      data: { status: 'CANCELLED' }
+      data: { status: 'CANCELLED' },
     });
   }
 
-  private async resolveTargetUsers(target: string, details?: any) {
-    const where: any = { isActive: true };
+  private async resolveTargetUsers(
+    target: string,
+    details?: Prisma.InputJsonObject,
+  ) {
+    const where: Prisma.UserWhereInput = { isActive: true };
+    const isStringArray = (value: unknown): value is string[] =>
+      Array.isArray(value) &&
+      value.every((item: unknown) => typeof item === 'string');
 
     switch (target) {
       case 'SELLERS':
@@ -125,23 +155,33 @@ export class NotificationCampaignsService {
         break;
       case 'ALL':
         break; // Everyone except maybe admins? We'll send to all active users.
+      case 'SPECIFIC_SELLERS':
+        if (!isStringArray(details?.sellerIds)) {
+          throw new BadRequestException('Danh sách sellerIds không hợp lệ');
+        }
+        where.id = { in: details.sellerIds };
+        where.role = { name: RoleName.SELLER };
+        break;
       case 'BUSINESSES':
-        if (!details?.businessIds || !Array.isArray(details.businessIds)) {
-          throw new BadRequestException('Danh sách businessIds không hợp lệ');
+        // Tương thích chiến dịch đã lưu trước migration SellerProfile.
+        if (!isStringArray(details?.businessIds)) {
+          throw new BadRequestException(
+            'Danh sách businessIds legacy không hợp lệ',
+          );
         }
         where.businesses = { some: { id: { in: details.businessIds } } };
         break;
       case 'PROVINCES':
-        if (!details?.provinceIds || !Array.isArray(details.provinceIds)) {
+        if (!isStringArray(details?.provinceIds)) {
           throw new BadRequestException('Danh sách provinceIds không hợp lệ');
         }
-        where.businesses = { some: { provinceId: { in: details.provinceIds } } };
+        where.sellerProfile = { provinceId: { in: details.provinceIds } };
         break;
       case 'WARDS':
-        if (!details?.wardIds || !Array.isArray(details.wardIds)) {
+        if (!isStringArray(details?.wardIds)) {
           throw new BadRequestException('Danh sách wardIds không hợp lệ');
         }
-        where.businesses = { some: { wardId: { in: details.wardIds } } };
+        where.sellerProfile = { wardId: { in: details.wardIds } };
         break;
       default:
         throw new BadRequestException('Đối tượng nhận không hợp lệ');
@@ -149,7 +189,7 @@ export class NotificationCampaignsService {
 
     return this.prisma.user.findMany({
       where,
-      select: { id: true }
+      select: { id: true },
     });
   }
 }

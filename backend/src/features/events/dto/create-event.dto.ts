@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsDateString, IsEnum, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsInt,
+  IsDateString,
+  IsEnum,
+  Min,
+} from 'class-validator';
 import { EventStatus } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -89,7 +99,7 @@ export class CreateEventDto {
   registrationRequired?: boolean;
 
   @ApiProperty({ required: false })
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @IsOptional()
   maxParticipants?: number;

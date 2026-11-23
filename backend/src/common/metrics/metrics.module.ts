@@ -1,6 +1,10 @@
 import { Module, Global } from '@nestjs/common';
 import { MetricsInterceptor } from './metrics.interceptor';
-import { makeCounterProvider, makeHistogramProvider, getToken } from '@willsoto/nestjs-prometheus';
+import {
+  makeCounterProvider,
+  makeHistogramProvider,
+  getToken,
+} from '@willsoto/nestjs-prometheus';
 
 @Global()
 @Module({

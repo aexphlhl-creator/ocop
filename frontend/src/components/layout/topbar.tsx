@@ -14,7 +14,8 @@ const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const segmentLabels: Record<string, string> = {
   dashboard: 'Bảng điều khiển',
   products: 'Sản phẩm',
-  businesses: 'Chủ thể',
+  businesses: 'Người bán',
+  sellers: 'Người bán',
   news: 'Tin tức',
   profile: 'Hồ sơ',
   map: 'Bản đồ',

@@ -1,9 +1,15 @@
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React from 'react';
 import Link from 'next/link';
 import { Star, MapPin, ArrowRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import type { Product } from '../../types/catalog';
 
-export function ProductCard({ product, className }: { product: any, className?: string }) {
+export function ProductCard({ product, className }: { product: Product, className?: string }) {
+  const sellerProfile = product.seller?.sellerProfile;
+  const sellerName = sellerProfile?.displayName ?? product.seller?.fullName;
+  const sellerId = product.sellerId ?? product.seller?.id;
   return (
     <div className={cn(
       "group relative flex flex-col h-full bg-surface rounded-2xl border border-border/60 transition-all duration-300",
@@ -12,7 +18,7 @@ export function ProductCard({ product, className }: { product: any, className?: 
     )}>
       {/* Image Block */}
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted-bg rounded-t-2xl shrink-0">
-        <img
+        <AssetImage
           src={product.images?.[0]?.url || product.images?.[0]?.imageUrl || 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?auto=format&fit=crop&w=400&q=80'}
           alt={product.name}
           className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-700 ease-in-out"
@@ -27,14 +33,21 @@ export function ProductCard({ product, className }: { product: any, className?: 
         
         {/* Layered Badges */}
         <div className="absolute top-0 left-0 w-full p-3 flex justify-between items-start pointer-events-none z-10">
-          {product.ocopLevel && (
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface/95 backdrop-blur rounded-full border border-border/50 shadow-sm transition-transform duration-300 group-hover:scale-105">
-              <Star className="h-3.5 w-3.5 fill-secondary text-secondary" />
-              <span className="text-[11px] font-bold text-foreground">
-                {product.ocopLevel.level} Sao
-              </span>
-            </div>
-          )}
+          <div className="flex flex-col gap-1 items-start">
+            {product.ocopLevel && (
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface/95 backdrop-blur rounded-full border border-border/50 shadow-sm transition-transform duration-300 group-hover:scale-105">
+                <Star className="h-3.5 w-3.5 fill-secondary text-secondary" />
+                <span className="text-[11px] font-bold text-foreground">
+                  {product.ocopLevel.level} Sao
+                </span>
+              </div>
+            )}
+            {typeof product.availableStock === 'number' && product.availableStock <= 0 && (
+              <div className="inline-flex items-center px-2 py-0.5 bg-rose-600 text-white text-[10px] font-bold rounded-md shadow-sm">
+                Hết hàng
+              </div>
+            )}
+          </div>
           
           {product.category?.name && (
             <div className="inline-flex items-center px-2.5 py-1 bg-primary/95 backdrop-blur text-surface rounded-full shadow-sm">
@@ -81,15 +94,15 @@ export function ProductCard({ product, className }: { product: any, className?: 
           )}
         </div>
         
-        {product.business && (
+        {sellerId && sellerName && (
           <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
             <span className="text-[10px] font-medium uppercase tracking-wider text-muted">Sản xuất bởi</span>
             <Link 
-              href={`/shops/${product.business.id}`} 
+              href={`/shops/${sellerId}`}
               className="text-xs font-semibold text-foreground truncate max-w-[140px] hover:text-primary hover:underline underline-offset-4"
-              title={product.business.name}
+              title={sellerName}
             >
-              {product.business.name}
+              {sellerName}
             </Link>
           </div>
         )}

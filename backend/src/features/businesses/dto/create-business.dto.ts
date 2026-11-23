@@ -1,28 +1,49 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class CreateBusinessDto {
-  @ApiProperty({ example: 'Hợp tác xã Gốm sứ Bát Tràng', description: 'Tên chủ thể sản xuất' })
+  @ApiProperty({
+    example: 'Hợp tác xã Gốm sứ Bát Tràng',
+    description: 'Tên chủ thể sản xuất',
+  })
   @IsString()
   @IsNotEmpty({ message: 'Tên chủ thể không được để trống' })
   name: string;
 
-  @ApiProperty({ example: '0101234567', description: 'Mã số thuế doanh nghiệp' })
+  @ApiProperty({
+    example: '0101234567',
+    description: 'Mã số thuế doanh nghiệp',
+  })
   @IsString()
   @IsNotEmpty({ message: 'Mã số thuế không được để trống' })
   taxCode: string;
 
-  @ApiPropertyOptional({ example: '0243874000', description: 'Số điện thoại liên hệ' })
+  @ApiPropertyOptional({
+    example: '0243874000',
+    description: 'Số điện thoại liên hệ',
+  })
   @IsString()
   @IsOptional()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'contact@battrang.vn', description: 'Email liên hệ' })
+  @ApiPropertyOptional({
+    example: 'contact@battrang.vn',
+    description: 'Email liên hệ',
+  })
   @IsEmail({}, { message: 'Email không đúng định dạng' })
   @IsOptional()
   email?: string;
 
-  @ApiProperty({ example: 'Số 10, Xóm 5, Bát Tràng', description: 'Địa chỉ chi tiết' })
+  @ApiProperty({
+    example: 'Số 10, Xóm 5, Bát Tràng',
+    description: 'Địa chỉ chi tiết',
+  })
   @IsString()
   @IsNotEmpty({ message: 'Địa chỉ không được để trống' })
   address: string;
@@ -32,12 +53,16 @@ export class CreateBusinessDto {
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Lĩnh vực hoạt động/kinh doanh (VD: Nông sản, Thủ công)' })
+  @ApiPropertyOptional({
+    description: 'Lĩnh vực hoạt động/kinh doanh (VD: Nông sản, Thủ công)',
+  })
   @IsString()
   @IsOptional()
   industry?: string;
 
-  @ApiPropertyOptional({ description: 'URL ảnh đại diện hoặc logo của chủ thể' })
+  @ApiPropertyOptional({
+    description: 'URL ảnh đại diện hoặc logo của chủ thể',
+  })
   @IsString()
   @IsOptional()
   avatarUrl?: string;
@@ -50,7 +75,10 @@ export class CreateBusinessDto {
   @IsUUID('4', { message: 'wardId phải là định dạng UUID v4' })
   wardId: string;
 
-  @ApiPropertyOptional({ example: 'user-uuid', description: 'ID người sở hữu (Chỉ Admin được truyền)' })
+  @ApiPropertyOptional({
+    example: 'user-uuid',
+    description: 'ID người sở hữu (Chỉ Admin được truyền)',
+  })
   @IsUUID('4', { message: 'ownerId phải là định dạng UUID v4' })
   @IsOptional()
   ownerId?: string;

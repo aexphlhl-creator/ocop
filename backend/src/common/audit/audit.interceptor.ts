@@ -1,18 +1,26 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { AuditService } from './audit.service';
-import { Request } from 'express';
+import { AppRequest } from '../interfaces/http-request.interface';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(private readonly auditService: AuditService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest<Request>();
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler<unknown>,
+  ): Observable<unknown> {
+    const req = context.switchToHttp().getRequest<AppRequest>();
     const { method, originalUrl, ip, headers } = req;
-    const user = (req as any).user;
-    
+    const user = req.user;
+
     // Chỉ audit các request thay đổi trạng thái hoặc auth
     if (method === 'GET' && !originalUrl.includes('/auth/')) {
       return next.handle();
@@ -27,37 +35,53 @@ export class AuditInterceptor implements NestInterceptor {
           action: eventName,
           userId: user?.id,
           role: user?.role,
-          businessId: user?.businessId,
+          sellerId: user?.role === 'SELLER' ? user.id : undefined,
           entity: this.extractEntity(originalUrl),
-          entityId: req.params?.id ? String(req.params.id) : (req.params?.productId ? String(req.params.productId) : (req.params?.batchId ? String(req.params.batchId) : undefined)),
+          entityId: req.params?.id
+            ? String(req.params.id)
+            : req.params?.productId
+              ? String(req.params.productId)
+              : req.params?.batchId
+                ? String(req.params.batchId)
+                : undefined,
           ip,
           userAgent: headers['user-agent'],
           result: 'SUCCESS',
         });
       }),
-      catchError((error) => {
+      catchError((error: unknown) => {
         this.auditService.logEvent({
           action: eventName,
           userId: user?.id,
           role: user?.role,
-          businessId: user?.businessId,
+          sellerId: user?.role === 'SELLER' ? user.id : undefined,
           entity: this.extractEntity(originalUrl),
-          entityId: req.params?.id ? String(req.params.id) : (req.params?.productId ? String(req.params.productId) : (req.params?.batchId ? String(req.params.batchId) : undefined)),
+          entityId: req.params?.id
+            ? String(req.params.id)
+            : req.params?.productId
+              ? String(req.params.productId)
+              : req.params?.batchId
+                ? String(req.params.batchId)
+                : undefined,
           ip,
           userAgent: headers['user-agent'],
           result: 'FAILED',
-          reason: error.message,
+          reason: error instanceof Error ? error.message : 'Unknown error',
         });
         throw error;
       }),
     );
   }
 
-  private mapRouteToEvent(method: string, url: string, body: any): string | null {
+  private mapRouteToEvent(
+    method: string,
+    url: string,
+    body: unknown,
+  ): string | null {
     if (url.includes('/auth/login')) return 'LOGIN_ATTEMPT'; // will be success/failed based on tap/catch
     if (url.includes('/auth/logout')) return 'LOGOUT';
     if (url.includes('/auth/refresh')) return 'TOKEN_REFRESH';
-    
+
     if (url.includes('/businesses')) {
       if (method === 'POST') return 'BUSINESS_CREATED';
       if (method === 'PATCH') return 'BUSINESS_UPDATED';
@@ -79,9 +103,13 @@ export class AuditInterceptor implements NestInterceptor {
     if (url.includes('/orders')) {
       if (method === 'POST') return 'ORDER_CREATED';
       if (url.endsWith('/status')) {
-         if (body?.status === 'CANCELLED') return 'ORDER_CANCELLED';
-         if (body?.status === 'REFUNDED') return 'ORDER_REFUNDED';
-         return 'ORDER_STATUS_UPDATED';
+        const status =
+          typeof body === 'object' && body !== null && 'status' in body
+            ? body.status
+            : undefined;
+        if (status === 'CANCELLED') return 'ORDER_CANCELLED';
+        if (status === 'REFUNDED') return 'ORDER_REFUNDED';
+        return 'ORDER_STATUS_UPDATED';
       }
     }
 

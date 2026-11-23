@@ -5,13 +5,21 @@ import { StorageProvider, StoredFile } from './storage-provider.interface';
 export class DemoStorageProvider implements StorageProvider {
   private readonly logger = new Logger(DemoStorageProvider.name);
 
-  async upload(_file: Express.Multer.File, _folder: string): Promise<StoredFile> {
-    this.logger.warn('[DemoStorageProvider] DEMO_MODE=true -> Skip MinIO upload');
-    throw new BadRequestException('Certificate file upload is disabled in demo mode.');
+  upload(): Promise<StoredFile> {
+    this.logger.warn(
+      '[DemoStorageProvider] DEMO_MODE=true -> Skip MinIO upload',
+    );
+    return Promise.reject(
+      new BadRequestException(
+        'Certificate file upload is disabled in demo mode.',
+      ),
+    );
   }
 
-  async getDownloadUrl(fileUrl: string): Promise<string> {
-    this.logger.log('[DemoStorageProvider] DEMO_MODE=true -> Skip MinIO presigned URL generation');
-    return fileUrl;
+  getDownloadUrl(fileUrl: string): Promise<string> {
+    this.logger.log(
+      '[DemoStorageProvider] DEMO_MODE=true -> Skip MinIO presigned URL generation',
+    );
+    return Promise.resolve(fileUrl);
   }
 }

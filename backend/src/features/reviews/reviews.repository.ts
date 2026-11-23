@@ -14,10 +14,9 @@ export class ReviewsRepository {
           select: {
             id: true,
             fullName: true,
-            email: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
   }
 
@@ -30,10 +29,9 @@ export class ReviewsRepository {
           select: {
             id: true,
             fullName: true,
-            email: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
   }
 
@@ -46,23 +44,25 @@ export class ReviewsRepository {
             id: true,
             fullName: true,
             email: true,
-          }
+          },
         },
         product: {
           select: {
             id: true,
             name: true,
             images: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
   }
 
   async delete(id: string) {
-    const review = await this.prisma.productReview.findUnique({ where: { id } });
+    const review = await this.prisma.productReview.findUnique({
+      where: { id },
+    });
     if (!review) return null;
-    
+
     await this.prisma.productReview.delete({ where: { id } });
     return review;
   }
@@ -82,7 +82,7 @@ export class ReviewsRepository {
       data: {
         averageRating,
         reviewCount,
-      }
+      },
     });
 
     return { averageRating, reviewCount };

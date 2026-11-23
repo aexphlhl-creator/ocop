@@ -1,5 +1,7 @@
 'use client';
 
+import type { Product, Province, Ward, NamedRecord, OcopLevel, QueryParams, ApiResponse } from '@/types/catalog';
+
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -34,25 +36,26 @@ function ProductsPageContent() {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const limit = 6;
 
-  // 1. Tải danh mục và xếp hạng OCOP từ danh sách sản phẩm thô
-  const { data: rawMetadata = [] } = useQuery({
-    queryKey: ['productsMetadata'],
+  // 1. Tải danh mục và xếp hạng OCOP từ API độc lập
+  const { data: categories = [] } = useQuery<NamedRecord[]>({
+    queryKey: ['publicCategories'],
     queryFn: async () => {
-      const res = await api.get('/api/v1/products?limit=100&status=APPROVED');
-      return res.data.data || [];
+      const res = await api.get('/api/v1/categories');
+      return res.data.data || res.data || [];
     },
   });
 
-  const categories = Array.from(
-    new Map(rawMetadata.map((p: any) => [p.category?.id, p.category])).values()
-  ).filter(Boolean);
-
-  const ocopLevels = Array.from(
-    new Map(rawMetadata.map((p: any) => [p.ocopLevel?.id, p.ocopLevel])).values()
-  ).filter(Boolean).sort((a: any, b: any) => a.level - b.level);
+  const { data: ocopLevels = [] } = useQuery<OcopLevel[]>({
+    queryKey: ['publicOcopLevels'],
+    queryFn: async () => {
+      const res = await api.get('/api/v1/ocop-levels');
+      const list: OcopLevel[] = res.data.data || res.data || [];
+      return [...list].sort((a, b) => a.level - b.level);
+    },
+  });
 
   // 2. Tải danh sách tỉnh thành
-  const { data: provinces = [] } = useQuery({
+  const { data: provinces = [] } = useQuery<Province[]>({
     queryKey: ['provincesList'],
     queryFn: async () => {
       const res = await api.get('/api/v1/provinces');
@@ -61,7 +64,7 @@ function ProductsPageContent() {
   });
 
   // 2.5 Tải danh sách xã/phường khi có tỉnh
-  const { data: wards = [], isLoading: isLoadingWards } = useQuery({
+  const { data: wards = [], isLoading: isLoadingWards } = useQuery<Ward[]>({
     queryKey: ['wardsList', selectedProvinceId],
     queryFn: async () => {
       if (!selectedProvinceId) return [];
@@ -72,10 +75,10 @@ function ProductsPageContent() {
   });
 
   // 3. Tải sản phẩm có phân trang + bộ lọc
-  const { data: productsData, isLoading } = useQuery({
+  const { data: productsData, isLoading } = useQuery<ApiResponse<Product[]>>({
     queryKey: ['productsList', search, selectedCategoryId, selectedProvinceId, selectedLevelId, selectedWardId, page],
     queryFn: async () => {
-      const params: any = { page, limit, status: 'APPROVED' };
+      const params: QueryParams = { page, limit, status: 'APPROVED' };
       if (search) params.search = search;
       if (selectedCategoryId) params.categoryId = selectedCategoryId;
       if (selectedProvinceId) params.provinceId = selectedProvinceId;
@@ -102,7 +105,7 @@ function ProductsPageContent() {
 
   const selectCls = 'w-full text-sm border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/15 focus:border-[#16A34A] transition-all cursor-pointer';
 
-  const FilterPanel = () => (
+  const filterPanel = (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Bộ lọc</h3>
@@ -124,7 +127,7 @@ function ProductsPageContent() {
           className={selectCls}
         >
           <option value="">Tất cả ngành hàng</option>
-          {categories.map((cat: any) => (
+          {categories.map((cat: NamedRecord) => (
             <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
         </select>
@@ -138,7 +141,7 @@ function ProductsPageContent() {
           className={selectCls}
         >
           <option value="">Tất cả tỉnh thành</option>
-          {provinces.map((prov: any) => (
+          {provinces.map((prov: Province) => (
             <option key={prov.id} value={prov.id}>{prov.name}</option>
           ))}
         </select>
@@ -158,7 +161,7 @@ function ProductsPageContent() {
             <option value="">
               {isLoadingWards ? 'Đang tải...' : wards.length === 0 ? 'Không có dữ liệu' : `Tất cả xã phường (${wards.length})`}
             </option>
-            {wards.map((w: any) => (
+            {wards.map((w: Ward) => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>
@@ -173,7 +176,7 @@ function ProductsPageContent() {
           className={selectCls}
         >
           <option value="">Tất cả xếp hạng</option>
-          {ocopLevels.map((lvl: any) => (
+          {ocopLevels.map((lvl: OcopLevel) => (
             <option key={lvl.id} value={lvl.id}>{lvl.title}</option>
           ))}
         </select>
@@ -220,7 +223,7 @@ function ProductsPageContent() {
         {/* Filter Sidebar – Desktop */}
         <aside className="hidden lg:block">
           <div className="sticky top-32 p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
-            <FilterPanel />
+            {filterPanel}
           </div>
         </aside>
 
@@ -244,7 +247,7 @@ function ProductsPageContent() {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
               >
-                {productsList.map((product: any, idx: number) => (
+                {productsList.map((product: Product, idx: number) => (
                   <motion.div
                     key={product.id}
                     initial={{ opacity: 0, y: 16 }}
@@ -292,7 +295,7 @@ function ProductsPageContent() {
                 <X className="h-5 w-5 text-slate-500" />
               </button>
             </div>
-            <FilterPanel />
+            {filterPanel}
             <div className="mt-6">
               <Button className="w-full" onClick={() => setMobileFilterOpen(false)}>
                 Áp dụng bộ lọc

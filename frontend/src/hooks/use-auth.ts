@@ -1,18 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { useAuthStore, User } from '../stores/auth.store';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useHydrated } from './use-hydrated';
 
 export const useCurrentUser = () => {
   const { accessToken, logout, user } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   const query = useQuery({
-    queryKey: ['currentUser'],
+    queryKey: ['currentUser', user?.id],
     queryFn: async () => {
       const response = await api.get('/api/v1/auth/me');
       // Backend có global interceptor đóng gói trong { success: true, data: User }

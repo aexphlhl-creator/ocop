@@ -3,10 +3,10 @@ import {
   Catch,
   ArgumentsHost,
   HttpException,
-  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { httpErrorStatus } from '../interfaces/http-request.interface';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -20,23 +20,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : (exception as any)?.status || HttpStatus.INTERNAL_SERVER_ERROR;
+        : httpErrorStatus(exception);
 
-    const exceptionResponse: any =
+    const exceptionResponse: unknown =
       exception instanceof HttpException ? exception.getResponse() : null;
 
     let message = 'Internal server error';
-    let details: any = undefined;
+    let details: string[] | undefined;
 
     if (exception instanceof HttpException) {
       if (status >= 500) {
         message = 'Internal server error';
       } else {
         message = exception.message;
-        if (exceptionResponse && typeof exceptionResponse === 'object') {
+        if (
+          exceptionResponse &&
+          typeof exceptionResponse === 'object' &&
+          'message' in exceptionResponse
+        ) {
           const resMessage = exceptionResponse.message;
           if (Array.isArray(resMessage)) {
-            details = resMessage;
+            details = resMessage.filter(
+              (detail): detail is string => typeof detail === 'string',
+            );
             message = 'Validation failed';
           } else if (typeof resMessage === 'string') {
             message = resMessage;
@@ -49,23 +55,30 @@ export class HttpExceptionFilter implements ExceptionFilter {
       } else if (status >= 500) {
         message = 'Internal server error';
       } else {
-        message = (exception as any)?.message || 'Internal server error';
+        message =
+          exception instanceof Error
+            ? exception.message
+            : 'Internal server error';
       }
     }
 
     let errorCode = 'SYSTEM_500';
-    if (status !== HttpStatus.INTERNAL_SERVER_ERROR) {
-       errorCode = this.mapErrorCode(request.url, status);
+    if (status !== 500) {
+      errorCode = this.mapErrorCode(request.url, status);
     }
 
-    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (status === 500) {
       this.logger.error(
         `${request.method} ${request.url} - Error: ${
-          exception instanceof Error ? exception.stack : JSON.stringify(exception)
+          exception instanceof Error
+            ? exception.stack
+            : JSON.stringify(exception)
         }`,
       );
     } else {
-      this.logger.warn(`${request.method} ${request.url} - Status ${status} - Message: ${message}`);
+      this.logger.warn(
+        `${request.method} ${request.url} - Status ${status} - Message: ${message}`,
+      );
     }
 
     response.status(status).json({
@@ -77,7 +90,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         details,
         timestamp: new Date().toISOString(),
         path: request.url,
-        reqId: (request as any).id || request.headers['x-correlation-id'] || 'UNKNOWN',
+        reqId: request.id || request.headers['x-correlation-id'] || 'UNKNOWN',
       },
     });
   }
@@ -90,7 +103,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (url.includes('/inventory')) return `INVENTORY_${s}`;
     if (url.includes('/orders')) return `ORDER_${s}`;
     if (url.includes('/certificates')) return `CERTIFICATE_${s}`;
-    if (url.includes('/supply-chain') || url.includes('/traceability')) return `TRACEABILITY_${s}`;
+    if (url.includes('/supply-chain') || url.includes('/traceability'))
+      return `TRACEABILITY_${s}`;
     if (url.includes('/blockchain')) return `BLOCKCHAIN_${s}`;
     if (status === 400) return 'VALIDATION_400';
     return `SYSTEM_${s}`;

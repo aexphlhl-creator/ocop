@@ -12,7 +12,10 @@ export class CreateInventoryDto {
   @IsNotEmpty()
   productId: string;
 
-  @ApiPropertyOptional({ example: 10, description: 'Ngưỡng tồn kho tối thiểu để cảnh báo' })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Ngưỡng tồn kho tối thiểu để cảnh báo',
+  })
   @IsInt()
   @Min(0)
   @IsOptional()

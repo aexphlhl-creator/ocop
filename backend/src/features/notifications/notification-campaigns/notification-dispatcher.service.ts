@@ -14,7 +14,7 @@ export class NotificationDispatcherService {
       // Get recipients
       const recipients = await this.prisma.notificationRecipient.findMany({
         where: { campaignId, deliveryStatus: 'PENDING' },
-        include: { user: true, campaign: true }
+        include: { user: true, campaign: true },
       });
 
       if (recipients.length === 0) {
@@ -36,7 +36,7 @@ export class NotificationDispatcherService {
               message: campaign.message,
               type: 'INFO',
               link: campaign.eventId ? `/events/${campaign.eventId}` : null,
-            }
+            },
           });
 
           // Future Channel 2: Email (placeholder)
@@ -48,15 +48,18 @@ export class NotificationDispatcherService {
           // Mark recipient as SENT
           await this.prisma.notificationRecipient.update({
             where: { id: recipient.id },
-            data: { deliveryStatus: 'SENT' }
+            data: { deliveryStatus: 'SENT' },
           });
-          
+
           sentCount++;
         } catch (error) {
-          this.logger.error(`Failed to send to user ${recipient.userId}`, error.stack);
+          this.logger.error(
+            `Failed to send to user ${recipient.userId}`,
+            error instanceof Error ? error.stack : String(error),
+          );
           await this.prisma.notificationRecipient.update({
             where: { id: recipient.id },
-            data: { deliveryStatus: 'FAILED' }
+            data: { deliveryStatus: 'FAILED' },
           });
           failedCount++;
         }
@@ -69,16 +72,21 @@ export class NotificationDispatcherService {
           status: 'COMPLETED',
           sentAt: new Date(),
           sentCount: { increment: sentCount },
-          failedCount: { increment: failedCount }
-        }
+          failedCount: { increment: failedCount },
+        },
       });
 
-      this.logger.log(`Campaign ${campaignId} dispatched. Sent: ${sentCount}, Failed: ${failedCount}`);
+      this.logger.log(
+        `Campaign ${campaignId} dispatched. Sent: ${sentCount}, Failed: ${failedCount}`,
+      );
     } catch (error) {
-      this.logger.error(`Error dispatching campaign ${campaignId}`, error.stack);
+      this.logger.error(
+        `Error dispatching campaign ${campaignId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
       await this.prisma.notificationCampaign.update({
         where: { id: campaignId },
-        data: { status: 'FAILED' }
+        data: { status: 'FAILED' },
       });
     }
   }

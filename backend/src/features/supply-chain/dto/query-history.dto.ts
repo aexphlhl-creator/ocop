@@ -1,4 +1,12 @@
-import { IsOptional, IsString, IsUUID, IsDateString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsDateString,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -8,7 +16,9 @@ export class QueryHistoryDto {
   @IsUUID()
   stageId?: string;
 
-  @ApiPropertyOptional({ description: 'Lọc theo tên actor (tìm kiếm gần đúng)' })
+  @ApiPropertyOptional({
+    description: 'Lọc theo tên actor (tìm kiếm gần đúng)',
+  })
   @IsOptional()
   @IsString()
   actorName?: string;

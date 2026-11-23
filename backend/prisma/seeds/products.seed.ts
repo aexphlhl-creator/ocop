@@ -1,9 +1,9 @@
-import { PrismaClient, Category, Business, Province, Ward, OcopLevel, ProductStatus } from '@prisma/client';
+import { PrismaClient, Category, SellerProfile, Province, Ward, OcopLevel, ProductStatus } from '@prisma/client';
 
 export async function seedProducts(
   prisma: PrismaClient,
   categoriesMap: Record<string, Category>,
-  businessesMap: Record<string, Business>,
+  sellerProfilesMap: Record<string, SellerProfile>,
   provincesMap: Record<string, Province>,
   wardsMap: Record<string, Ward>,
   ocopLevelsMap: Record<number, OcopLevel>
@@ -17,7 +17,7 @@ export async function seedProducts(
       unit: 'Bộ',
       ocopLevel: 5,
       categoryName: 'Thủ công mỹ nghệ',
-      businessName: 'Hợp tác xã Gốm sứ Bát Tràng',
+      sellerProfileName: 'Hợp tác xã Gốm sứ Bát Tràng',
       wardKey: 'TP. Hà Nội_Xã Bát Tràng',
       provinceName: 'TP. Hà Nội',
       lat: 20.973,
@@ -33,7 +33,7 @@ export async function seedProducts(
       unit: 'Gói 500g',
       ocopLevel: 4,
       categoryName: 'Thực phẩm',
-      businessName: 'Hợp tác xã Mỳ gạo Hùng Lô',
+      sellerProfileName: 'Hợp tác xã Mỳ gạo Hùng Lô',
       wardKey: 'Phú Thọ_Xã Hùng Lô',
       provinceName: 'Phú Thọ',
       lat: 21.353,
@@ -49,7 +49,7 @@ export async function seedProducts(
       unit: 'Hộp 500g',
       ocopLevel: 4,
       categoryName: 'Thực phẩm',
-      businessName: 'Doanh nghiệp Đà Lạt Gift',
+      sellerProfileName: 'Đà Lạt Gift',
       wardKey: 'Lâm Đồng_Xã Xuân Thọ',
       provinceName: 'Lâm Đồng',
       lat: 11.933,
@@ -65,7 +65,7 @@ export async function seedProducts(
       unit: 'Túi 250g',
       ocopLevel: 5,
       categoryName: 'Đồ uống',
-      businessName: 'Doanh nghiệp Đà Lạt Gift',
+      sellerProfileName: 'Đà Lạt Gift',
       wardKey: 'Lâm Đồng_Xã Trạm Hành',
       provinceName: 'Lâm Đồng',
       lat: 11.840,
@@ -81,7 +81,7 @@ export async function seedProducts(
       unit: 'Túi 1kg',
       ocopLevel: 3,
       categoryName: 'Thực phẩm',
-      businessName: 'Cơ sở sản xuất muối Cần Giờ Hải Nam',
+      sellerProfileName: 'Cơ sở sản xuất muối Cần Giờ Hải Nam',
       wardKey: 'TP. Hồ Chí Minh_Xã Lý Nhơn',
       provinceName: 'TP. Hồ Chí Minh',
       lat: 10.451,
@@ -94,7 +94,7 @@ export async function seedProducts(
   let count = 0;
   for (const prod of productsData) {
     const category = categoriesMap[prod.categoryName];
-    const business = businessesMap[prod.businessName];
+    const sellerProfile = sellerProfilesMap[prod.sellerProfileName];
     const ward = wardsMap[prod.wardKey];
     const prov = provincesMap[prod.provinceName];
     const ocopLevelObj = ocopLevelsMap[prod.ocopLevel];
@@ -102,8 +102,8 @@ export async function seedProducts(
     if (!category) {
       throw new Error(`Missing category reference "${prod.categoryName}" for product "${prod.name}"`);
     }
-    if (!business) {
-      throw new Error(`Missing business reference "${prod.businessName}" for product "${prod.name}"`);
+    if (!sellerProfile) {
+      throw new Error(`Missing Seller Profile reference "${prod.sellerProfileName}" for product "${prod.name}"`);
     }
     if (!ward) {
       throw new Error(`Missing ward reference "${prod.wardKey}" for product "${prod.name}"`);
@@ -124,7 +124,8 @@ export async function seedProducts(
         unit: prod.unit,
         ocopLevelId: ocopLevelObj.id,
         categoryId: category.id,
-        businessId: business.id,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
         wardId: ward.id,
         provinceId: prov.id,
         latitude: prod.lat,
@@ -139,7 +140,8 @@ export async function seedProducts(
         unit: prod.unit,
         ocopLevelId: ocopLevelObj.id,
         categoryId: category.id,
-        businessId: business.id,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
         wardId: ward.id,
         provinceId: prov.id,
         latitude: prod.lat,

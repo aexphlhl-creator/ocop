@@ -1,5 +1,21 @@
-import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards , ParseUUIDPipe} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { NewsService } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
@@ -25,7 +41,10 @@ export class NewsController {
   @ApiResponse({ status: 201, description: 'Tạo bài viết tin tức thành công' })
   @ApiResponse({ status: 400, description: 'Dữ liệu đầu vào không hợp lệ' })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải tài khoản quản trị ADMIN' })
+  @ApiResponse({
+    status: 403,
+    description: 'Không phải tài khoản quản trị ADMIN',
+  })
   async create(@Body() dto: CreateNewsDto, @CurrentUser() user: RequestUser) {
     return this.newsService.create(dto, user);
   }
@@ -33,19 +52,36 @@ export class NewsController {
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Lấy danh sách bài viết tin tức (Công cộng, có phân trang và lọc)' })
-  @ApiResponse({ status: 200, description: 'Danh sách bài viết tin tức. Khách vãng lai chỉ xem được PUBLISHED.' })
-  async findAll(@Query() query: GetNewsQueryDto, @CurrentUser() user: RequestUser | null) {
+  @ApiOperation({
+    summary: 'Lấy danh sách bài viết tin tức (Công cộng, có phân trang và lọc)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Danh sách bài viết tin tức. Khách vãng lai chỉ xem được PUBLISHED.',
+  })
+  async findAll(
+    @Query() query: GetNewsQueryDto,
+    @CurrentUser() user: RequestUser | null,
+  ) {
     return this.newsService.findAll(query, user);
   }
 
   @Get(':slug')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Lấy thông tin chi tiết một bài viết tin tức theo Slug đường dẫn' })
+  @ApiOperation({
+    summary: 'Lấy thông tin chi tiết một bài viết tin tức theo Slug đường dẫn',
+  })
   @ApiResponse({ status: 200, description: 'Chi tiết bài viết tin tức' })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy bài viết hoặc bài viết ở trạng thái DRAFT' })
-  async findOneBySlug(@Param('slug') slug: string, @CurrentUser() user: RequestUser | null) {
+  @ApiResponse({
+    status: 404,
+    description: 'Không tìm thấy bài viết hoặc bài viết ở trạng thái DRAFT',
+  })
+  async findOneBySlug(
+    @Param('slug') slug: string,
+    @CurrentUser() user: RequestUser | null,
+  ) {
     return this.newsService.findOneBySlug(slug, user);
   }
 
@@ -53,12 +89,17 @@ export class NewsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Cập nhật bài viết tin tức theo ID (Chỉ dành cho ADMIN)' })
+  @ApiOperation({
+    summary: 'Cập nhật bài viết tin tức theo ID (Chỉ dành cho ADMIN)',
+  })
   @ApiResponse({ status: 200, description: 'Cập nhật bài viết thành công' })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không có quyền cập nhật' })
   @ApiResponse({ status: 404, description: 'Không tìm thấy bài viết' })
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateNewsDto) {
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateNewsDto,
+  ) {
     return this.newsService.update(id, dto);
   }
 
@@ -66,7 +107,9 @@ export class NewsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Xóa mềm bài viết tin tức theo ID (Chỉ dành cho ADMIN)' })
+  @ApiOperation({
+    summary: 'Xóa mềm bài viết tin tức theo ID (Chỉ dành cho ADMIN)',
+  })
   @ApiResponse({ status: 200, description: 'Xóa bài viết thành công' })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
   @ApiResponse({ status: 403, description: 'Không có quyền xóa' })

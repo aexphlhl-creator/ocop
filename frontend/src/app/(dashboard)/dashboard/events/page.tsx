@@ -1,45 +1,33 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { AssetImage } from '@/components/ui/asset-image';
+
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { OcopEvent } from '@/types/events';
+import type { ApiResponse } from '@/types/catalog';
 import { api } from '@/services/api';
 import { 
-  CalendarRange, Plus, Search, Filter, 
-  MoreVertical, CheckCircle2, XCircle, MapPin, Users 
+  CalendarRange, Plus, Search, MapPin, Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { toast } from 'sonner';
 import Link from 'next/link';
+import { useAuthStore } from '@/stores/auth.store';
 
 export default function EventsPage() {
-  const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuthStore();
   const [filter, setFilter] = useState({ search: '', status: '', page: 1, limit: 10 });
-  const [meta, setMeta] = useState<any>(null);
-
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filter.search) params.append('search', filter.search);
-      if (filter.status) params.append('status', filter.status);
-      params.append('page', filter.page.toString());
-      params.append('limit', filter.limit.toString());
-
-      const { data } = await api.get(`/api/v1/events?${params.toString()}`);
-      setEvents(data.data);
-      setMeta(data.meta);
-    } catch (error) {
-      toast.error('Lỗi khi tải danh sách sự kiện');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchEvents();
-  }, [filter]);
+  const { data, isLoading: loading, isError } = useQuery({
+    queryKey: ['dashboardEvents', user?.id, filter],
+    queryFn: async () => (await api.get<ApiResponse<OcopEvent[]>>('/api/v1/events', {
+      params: { ...filter, status: filter.status || undefined },
+    })).data,
+    enabled: !!user,
+  });
+  const events = data?.data ?? [];
+  const meta = data?.meta;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -65,6 +53,7 @@ export default function EventsPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {isError && <p role="alert" className="text-red-600">Không tải được danh sách sự kiện. Vui lòng thử lại.</p>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -75,20 +64,22 @@ export default function EventsPage() {
             Theo dõi, tạo mới và quản lý các sự kiện nông nghiệp, hội chợ OCOP
           </p>
         </div>
-        <Link href="/dashboard/events/create">
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 shadow-lg shadow-emerald-600/20">
-            <Plus className="w-4 h-4" /> Tạo sự kiện mới
-          </Button>
-        </Link>
+        {(user?.role === 'ADMIN' || user?.role === 'EVENT_COORDINATOR') && (
+          <Link href="/dashboard/events/create">
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 shadow-lg shadow-emerald-600/20">
+              <Plus className="w-4 h-4" /> Tạo sự kiện mới
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* KPI Cards Placeholder - Assume 4 KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { title: 'Tổng sự kiện', value: meta?.total || 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { title: 'Đang diễn ra', value: events.filter(e => e.status === 'ONGOING').length, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { title: 'Sắp tới', value: events.filter(e => e.status === 'PUBLISHED').length, color: 'text-violet-600', bg: 'bg-violet-50' },
-          { title: 'Tổng người tham gia', value: events.reduce((acc, curr) => acc + (curr.currentParticipants || 0), 0), color: 'text-orange-600', bg: 'bg-orange-50' }
+          { title: 'Tổng sự kiện', value: meta?.total ?? (events?.length || 0), color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { title: 'Đang diễn ra', value: (events || []).filter(e => e?.status === 'ONGOING').length, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { title: 'Sắp tới', value: (events || []).filter(e => e?.status === 'PUBLISHED').length, color: 'text-violet-600', bg: 'bg-violet-50' },
+          { title: 'Tổng người tham gia', value: (events || []).reduce((acc, curr) => acc + (curr?.currentParticipants || 0), 0), color: 'text-orange-600', bg: 'bg-orange-50' }
         ].map((kpi, idx) => (
           <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
             <span className="text-slate-500 text-sm font-medium">{kpi.title}</span>
@@ -104,7 +95,7 @@ export default function EventsPage() {
             placeholder="Tìm kiếm sự kiện..." 
             className="pl-10"
             value={filter.search}
-            onChange={(e: any) => setFilter(f => ({ ...f, search: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter(f => ({ ...f, search: e.target.value, page: 1 }))}
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
         </div>
@@ -112,7 +103,7 @@ export default function EventsPage() {
           <select 
             className="h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             value={filter.status}
-            onChange={(e: any) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}
           >
             <option value="">Tất cả trạng thái</option>
             <option value="DRAFT">Bản nháp</option>
@@ -128,7 +119,7 @@ export default function EventsPage() {
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 flex justify-center"><LoadingSpinner size="lg" /></div>
-        ) : events.length === 0 ? (
+        ) : !events || events.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <CalendarRange className="w-12 h-12 mx-auto text-slate-300 mb-4" />
             <p>Không tìm thấy sự kiện nào.</p>
@@ -140,7 +131,7 @@ export default function EventsPage() {
                 <div className="flex gap-4 items-start">
                   <div className="w-24 h-24 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200">
                     {event.coverImage ? (
-                      <img src={event.coverImage} alt={event.title} className="w-full h-full object-cover" />
+                      <AssetImage src={event.coverImage} alt={event.title} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-400">
                         <CalendarRange className="w-8 h-8" />
@@ -197,7 +188,7 @@ export default function EventsPage() {
             <Button 
               variant="outline" 
               size="sm"
-              disabled={meta.page <= 1}
+              disabled={filter.page <= 1}
               onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}
             >
               Trang trước
@@ -205,7 +196,7 @@ export default function EventsPage() {
             <Button 
               variant="outline" 
               size="sm"
-              disabled={meta.page >= meta.totalPages}
+              disabled={filter.page >= meta.totalPages}
               onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}
             >
               Trang sau

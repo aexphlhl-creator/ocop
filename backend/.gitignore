@@ -3,9 +3,22 @@ node_modules
 .env
 .env*
 !.env.example
+!.env.production.example
 
 /generated/prisma
 dist
 coverage
 assets/uploads
 scratch
+
+# E2E Session metadata files
+.e2e-session-*.json
+*.e2e-session*.json
+.e2e-*.json
+
+# Backups
+backups/
+*.dump
+*.sha256
+.rehearsal-*
+scratch-restore-*

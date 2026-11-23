@@ -13,12 +13,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
     JwtModule.register({}),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    AuthRepository,
-    JwtStrategy,
-    JwtRefreshStrategy,
-  ],
+  providers: [AuthService, AuthRepository, JwtStrategy, JwtRefreshStrategy],
   exports: [AuthService, AuthRepository],
 })
 export class AuthModule {}

@@ -52,7 +52,11 @@ export class NewsService {
     const cacheKey = `news:list:k_${keyword || ''}:s_${targetStatus || 'all'}:pg_${page}:lim_${limit}`;
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      return JSON.parse(cached) as ReturnType<
+        typeof createPaginationResponse<
+          Awaited<ReturnType<NewsRepository['findAndCount']>>['items'][number]
+        >
+      >;
     }
 
     const skip = (page - 1) * limit;
@@ -66,20 +70,28 @@ export class NewsService {
     });
 
     const response = createPaginationResponse(items, total, page, limit);
-    await this.redisService.set(cacheKey, JSON.stringify(response), this.CACHE_TTL);
+    await this.redisService.set(
+      cacheKey,
+      JSON.stringify(response),
+      this.CACHE_TTL,
+    );
     return response;
   }
 
   async findOneBySlug(slug: string, currentUser?: RequestUser | null) {
     const news = await this.newsRepository.findBySlug(slug);
     if (!news) {
-      throw new NotFoundException(`Không tìm thấy bài viết tin tức với đường dẫn "${slug}"`);
+      throw new NotFoundException(
+        `Không tìm thấy bài viết tin tức với đường dẫn "${slug}"`,
+      );
     }
 
     // Nếu bài viết nháp mà không phải Admin xem thì ẩn đi (404)
     if (news.status === NewsStatus.DRAFT) {
       if (!currentUser || currentUser.role !== RoleName.ADMIN) {
-        throw new NotFoundException(`Không tìm thấy bài viết tin tức với đường dẫn "${slug}"`);
+        throw new NotFoundException(
+          `Không tìm thấy bài viết tin tức với đường dẫn "${slug}"`,
+        );
       }
     }
 
@@ -89,7 +101,9 @@ export class NewsService {
   async update(id: string, dto: UpdateNewsDto) {
     const existing = await this.newsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Không tìm thấy bài viết tin tức với ID "${id}"`);
+      throw new NotFoundException(
+        `Không tìm thấy bài viết tin tức với ID "${id}"`,
+      );
     }
 
     let finalSlug = existing.slug;
@@ -119,7 +133,9 @@ export class NewsService {
   async remove(id: string) {
     const existing = await this.newsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Không tìm thấy bài viết tin tức với ID "${id}"`);
+      throw new NotFoundException(
+        `Không tìm thấy bài viết tin tức với ID "${id}"`,
+      );
     }
 
     await this.newsRepository.softDelete(id);
@@ -130,10 +146,15 @@ export class NewsService {
 
   private async clearNewsListCache() {
     try {
-      const client = this.redisService.getClient();
-      const keys = await client.keys('news:list:*');
-      if (keys.length > 0) {
-        await client.del(...keys);
+      if (this.redisService.deleteByPatterns) {
+        await this.redisService.deleteByPatterns(['news:*']);
+      }
+      const client = this.redisService.getClient?.();
+      if (client?.keys) {
+        const keys = await client.keys('news:list:*');
+        if (keys.length > 0) {
+          await client.del(...keys);
+        }
       }
     } catch {
       // Bỏ qua lỗi kết nối Redis
@@ -142,13 +163,20 @@ export class NewsService {
 
   private async clearDashboardAndStatsCache() {
     try {
-      const client = this.redisService.getClient();
-      // Invalidate dashboard và statistics caches
-      const keys = await client.keys('dashboard:*');
-      const statsKeys = await client.keys('statistics:*');
-      const allKeys = [...keys, ...statsKeys];
-      if (allKeys.length > 0) {
-        await client.del(...allKeys);
+      if (this.redisService.deleteByPatterns) {
+        await this.redisService.deleteByPatterns([
+          'dashboard:*',
+          'statistics:*',
+        ]);
+      }
+      const client = this.redisService.getClient?.();
+      if (client?.keys) {
+        const keys = await client.keys('dashboard:*');
+        const statsKeys = await client.keys('statistics:*');
+        const allKeys = [...keys, ...statsKeys];
+        if (allKeys.length > 0) {
+          await client.del(...allKeys);
+        }
       }
     } catch {
       // Bỏ qua lỗi kết nối Redis

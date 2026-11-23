@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Package, Check, X } from 'lucide-react';
+import type { BatchSummary } from '@/types/supply-chain';
 
 interface BatchAutocompleteProps {
-  batches: any[];
+  batches: BatchSummary[];
   selectedBatchId: string;
   onSelect: (batchId: string) => void;
 }
@@ -26,20 +27,13 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
     const term = query.toLowerCase();
     const batchNumber = (batch.batchNumber || '').toLowerCase();
     const productName = (batch.inventory?.product?.name || '').toLowerCase();
-    const businessName = (batch.inventory?.product?.business?.name || '').toLowerCase();
-    return batchNumber.includes(term) || productName.includes(term) || businessName.includes(term);
+    const sellerName = (batch.inventory?.product?.seller?.sellerProfile?.displayName || batch.inventory?.product?.seller?.fullName || '').toLowerCase();
+    return batchNumber.includes(term) || productName.includes(term) || sellerName.includes(term);
   }).slice(0, 10); // Limit results to 10 for performance
 
   const selectedBatch = batches.find(b => b.id === selectedBatchId);
   
-  // Update query when a selection is made or cleared
-  useEffect(() => {
-    if (selectedBatch) {
-      setQuery(`${selectedBatch.batchNumber} - ${selectedBatch.inventory?.product?.name}`);
-    } else {
-      setQuery('');
-    }
-  }, [selectedBatchId, selectedBatch]);
+  const displayValue = selectedBatch ? `${selectedBatch.batchNumber} - ${selectedBatch.inventory?.product?.name ?? ''}` : query;
 
   return (
     <div className="relative w-full max-w-2xl" ref={wrapperRef}>
@@ -47,16 +41,18 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          value={query}
+          role="combobox"
+          aria-controls="batch-autocomplete-options"
+          value={displayValue}
           onChange={(e) => {
             setQuery(e.target.value);
             setIsOpen(true);
-            if (selectedBatchId && e.target.value === '') {
+            if (selectedBatchId) {
               onSelect('');
             }
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder="Tìm kiếm theo Batch Code, Tên sản phẩm, hoặc Doanh nghiệp..."
+          placeholder="Tìm kiếm theo Batch Code, tên sản phẩm hoặc người bán..."
           className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm placeholder:text-slate-400"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
@@ -78,6 +74,7 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
 
       {isOpen && query && !selectedBatchId && (
         <ul 
+          id="batch-autocomplete-options"
           className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl shadow-xl max-h-80 overflow-y-auto py-1"
           role="listbox"
         >
@@ -87,6 +84,7 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
                 key={batch.id}
                 onClick={() => {
                   onSelect(batch.id);
+                  setQuery('');
                   setIsOpen(false);
                 }}
                 className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer flex items-center justify-between group transition-colors"
@@ -103,9 +101,9 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
                       <span>—</span>
                       <span className="truncate">{batch.inventory?.product?.name}</span>
                     </div>
-                    {batch.inventory?.product?.business?.name && (
+                    {batch.inventory?.product?.seller && (
                       <div className="text-xs text-slate-400 truncate mt-0.5">
-                        {batch.inventory.product.business.name} • {batch.inventory?.warehouse?.name}
+                        {batch.inventory.product.seller.sellerProfile?.displayName ?? batch.inventory.product.seller.fullName} • {batch.inventory?.warehouse?.name}
                       </div>
                     )}
                   </div>
@@ -117,7 +115,7 @@ export function BatchAutocomplete({ batches, selectedBatchId, onSelect }: BatchA
             ))
           ) : (
             <li className="px-4 py-8 text-center text-sm text-slate-500">
-              Không tìm thấy lô hàng nào phù hợp với "{query}"
+              Không tìm thấy lô hàng nào phù hợp với &quot;{query}&quot;
             </li>
           )}
         </ul>

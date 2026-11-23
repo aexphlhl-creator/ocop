@@ -4,6 +4,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  version?: number;
 }
 
 export class RequestUser {
@@ -13,6 +14,7 @@ export class RequestUser {
   phone: string | null;
   role: RoleName;
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: Date;
 }
 
@@ -21,4 +23,5 @@ export class RequestRefreshUser {
   email: string;
   role: RoleName;
   refreshToken: string;
+  version?: number;
 }

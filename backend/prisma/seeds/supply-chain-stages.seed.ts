@@ -57,19 +57,28 @@ const STAGES: Array<{
     description: 'Hàng hóa được nhập vào kho bảo quản',
   },
   {
+    name: SupplyChainStageName.HANDOVER_TO_CARRIER,
+    displayName: 'Bàn giao đơn vị vận chuyển',
+    icon: 'Handshake',
+    color: '#2563EB',
+    order: 7,
+    description:
+      'Quản lý kho xác nhận xuất kho, bàn giao vận đơn và chỉ định nhân viên logistics',
+  },
+  {
     name: SupplyChainStageName.SHIPPING,
-    displayName: 'Xuất kho / Vận chuyển',
+    displayName: 'Đang vận chuyển',
     icon: 'Truck',
     color: '#DC2626',
-    order: 7,
-    description: 'Hàng hóa được xuất kho và vận chuyển',
+    order: 8,
+    description: 'Nhân viên logistics xác nhận đã nhận hàng và đang vận chuyển',
   },
   {
     name: SupplyChainStageName.DISTRIBUTOR,
     displayName: 'Đại lý / Nhà phân phối',
     icon: 'Store',
     color: '#9333EA',
-    order: 8,
+    order: 9,
     description: 'Hàng hóa được tiếp nhận tại đại lý phân phối',
   },
   {
@@ -77,7 +86,7 @@ const STAGES: Array<{
     displayName: 'Bán lẻ',
     icon: 'ShoppingCart',
     color: '#EA580C',
-    order: 9,
+    order: 10,
     description: 'Sản phẩm được bày bán tại điểm bán lẻ',
   },
   {
@@ -85,7 +94,7 @@ const STAGES: Array<{
     displayName: 'Khách hàng',
     icon: 'User',
     color: '#0D9488',
-    order: 10,
+    order: 11,
     description: 'Sản phẩm đã đến tay khách hàng cuối',
   },
 ];

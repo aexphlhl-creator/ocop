@@ -1,11 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '@/utils/api-error';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { OcopEvent } from '@/types/events';
+import type { ApiResponse } from '@/types/catalog';
+import { useAuthStore } from '@/stores/auth.store';
 import { api } from '@/services/api';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { 
   ArrowLeft, CalendarRange, MapPin, Users, Globe, Lock, 
-  Mail, Phone, Clock, FileEdit, Trash2, CheckCircle2, PlayCircle, XCircle 
+  Mail, Phone, Clock, CheckCircle2, PlayCircle, XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -13,38 +21,30 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 
 export default function EventDetailPage() {
-  const { id } = useParams();
-  const router = useRouter();
-  const [event, setEvent] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const canManage = user?.role === 'ADMIN' || user?.role === 'EVENT_COORDINATOR';
   const [actionLoading, setActionLoading] = useState(false);
-
-  const fetchEvent = async () => {
-    try {
-      setLoading(true);
-      const { data } = await api.get(`/api/v1/events/${id}`);
-      setEvent(data);
-    } catch (error) {
-      toast.error('Lỗi khi tải chi tiết sự kiện');
-      router.push('/dashboard/events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (id) fetchEvent();
-  }, [id]);
+  const { data: event, isLoading: loading, refetch } = useQuery({
+    queryKey: ['dashboardEvent', id, user?.id],
+    queryFn: async () => (await api.get<ApiResponse<OcopEvent>>(`/api/v1/events/${id}`)).data.data,
+    enabled: !!id && !!user,
+  });
 
   const handleStatusChange = async (action: string) => {
+    if (!canManage || actionLoading) return;
     if (!confirm(`Bạn có chắc chắn muốn chuyển trạng thái này?`)) return;
     try {
       setActionLoading(true);
       await api.patch(`/api/v1/events/${id}/${action}`);
       toast.success('Chuyển trạng thái thành công');
-      fetchEvent();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Lỗi khi chuyển trạng thái');
+      await Promise.all([
+        refetch(),
+        ...['dashboardEvents', 'dashboardRecentEvents', 'publicEvents', 'publicEventDetail', 'publicRelatedEvents'].map(key => queryClient.invalidateQueries({ queryKey: [key] })),
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Lỗi khi chuyển trạng thái'));
     } finally {
       setActionLoading(false);
     }
@@ -76,7 +76,7 @@ export default function EventDetailPage() {
     return <div className="p-12 flex justify-center"><LoadingSpinner size="lg" /></div>;
   }
 
-  if (!event) return null;
+  if (!event) return <p role="alert" className="p-6 text-red-600">Không tải được sự kiện. Vui lòng thử lại.</p>;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -99,7 +99,7 @@ export default function EventDetailPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        {canManage && <div className="flex flex-wrap gap-2">
           {event.status === 'DRAFT' && (
             <Button onClick={() => handleStatusChange('publish')} disabled={actionLoading} className="bg-blue-600 hover:bg-blue-700 text-white">
               <Globe className="w-4 h-4 mr-2" /> Xuất bản
@@ -111,7 +111,7 @@ export default function EventDetailPage() {
             </Button>
           )}
           {event.status === 'ONGOING' && (
-            <Button onClick={() => handleStatusChange('completed')} disabled={actionLoading} className="bg-violet-600 hover:bg-violet-700 text-white">
+            <Button onClick={() => handleStatusChange('complete')} disabled={actionLoading} className="bg-violet-600 hover:bg-violet-700 text-white">
               <CheckCircle2 className="w-4 h-4 mr-2" /> Kết thúc Sự kiện
             </Button>
           )}
@@ -120,7 +120,7 @@ export default function EventDetailPage() {
               <XCircle className="w-4 h-4 mr-2" /> Hủy
             </Button>
           )}
-        </div>
+        </div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -128,7 +128,7 @@ export default function EventDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
             {event.coverImage ? (
-              <img src={event.coverImage} alt={event.title} className="w-full h-64 object-cover" />
+              <AssetImage src={event.coverImage} alt={event.title} className="w-full h-64 object-cover" />
             ) : (
               <div className="w-full h-64 bg-slate-100 flex items-center justify-center border-b">
                 <CalendarRange className="w-16 h-16 text-slate-300" />
@@ -137,9 +137,9 @@ export default function EventDetailPage() {
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">Nội dung chi tiết</h2>
               <div className="prose max-w-none dark:prose-invert">
-                <p className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-4">{event.description}</p>
+                <p className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-4">{event.summary}</p>
                 <div className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">
-                  {event.content || 'Chưa có nội dung chi tiết.'}
+                  {event.description || 'Chưa có nội dung chi tiết.'}
                 </div>
               </div>
             </div>

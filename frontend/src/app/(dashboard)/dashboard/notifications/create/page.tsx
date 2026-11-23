@@ -1,9 +1,12 @@
 'use client';
 
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useState } from 'react';
 import { api } from '@/services/api';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BellRing, Save, Send } from 'lucide-react';
+import { ArrowLeft, Save, Send } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 // removed Textarea import
@@ -12,6 +15,7 @@ import Link from 'next/link';
 
 export default function CreateCampaignPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -24,32 +28,38 @@ export default function CreateCampaignPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.content) {
+    if (loading) return;
+    if (!formData.title.trim() || !formData.content.trim()) {
       toast.error('Vui lòng nhập tiêu đề và nội dung thông báo');
       return;
     }
 
-    if (formData.isScheduled && !formData.scheduledAt) {
-      toast.error('Vui lòng chọn thời gian gửi');
+    if (formData.isScheduled && (!formData.scheduledAt || !Number.isFinite(new Date(formData.scheduledAt).getTime()) || new Date(formData.scheduledAt).getTime() <= Date.now())) {
+      toast.error('Vui lòng chọn thời gian gửi trong tương lai');
       return;
     }
 
     try {
       setLoading(true);
       
-      const payload: any = {
-        title: formData.title,
-        content: formData.content,
-        targetType: formData.targetType,
+      const payload: { title: string; message: string; targetAudience: string; targetDetails?: Record<string, string[]>; scheduledAt?: string } = {
+        title: formData.title.trim(),
+        message: formData.content.trim(),
+        targetAudience: formData.targetType,
       };
 
-      if (['SPECIFIC_BUSINESSES', 'SPECIFIC_PROVINCES', 'SPECIFIC_WARDS'].includes(formData.targetType)) {
+      if (['SPECIFIC_SELLERS', 'PROVINCES', 'WARDS'].includes(formData.targetType)) {
         if (!formData.targetIds) {
           toast.error('Vui lòng nhập ID đối tượng nhận');
           setLoading(false);
           return;
         }
-        payload.targetIds = formData.targetIds.split(',').map(id => id.trim()).filter(Boolean);
+        const targetIds = formData.targetIds.split(',').map(id => id.trim()).filter(Boolean);
+        if (!targetIds.length) throw new Error('Vui lòng nhập ít nhất một ID đối tượng nhận');
+        const detailKey = formData.targetType === 'SPECIFIC_SELLERS'
+          ? 'sellerIds'
+          : formData.targetType === 'PROVINCES' ? 'provinceIds' : 'wardIds';
+        payload.targetDetails = { [detailKey]: targetIds };
       }
 
       if (formData.isScheduled) {
@@ -57,10 +67,11 @@ export default function CreateCampaignPage() {
       }
 
       await api.post('/api/v1/notification-campaigns', payload);
+      await queryClient.invalidateQueries({ queryKey: ['notificationCampaigns'] });
       toast.success('Tạo chiến dịch thông báo thành công');
       router.push('/dashboard/notifications');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Lỗi khi tạo chiến dịch');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Lỗi khi tạo chiến dịch'));
     } finally {
       setLoading(false);
     }
@@ -111,14 +122,15 @@ export default function CreateCampaignPage() {
               onChange={e => setFormData({ ...formData, targetType: e.target.value })}
             >
               <option value="ALL">Tất cả người dùng</option>
-              <option value="ALL_SELLERS">Tất cả Chủ thể (Sellers)</option>
-              <option value="ALL_CUSTOMERS">Tất cả Khách hàng</option>
-              <option value="SPECIFIC_BUSINESSES">Chủ thể cụ thể</option>
-              <option value="SPECIFIC_PROVINCES">Tỉnh/Thành phố cụ thể</option>
+              <option value="SELLERS">Tất cả người bán</option>
+              <option value="CUSTOMERS">Tất cả khách hàng</option>
+              <option value="SPECIFIC_SELLERS">Người bán cụ thể</option>
+              <option value="PROVINCES">Người bán theo tỉnh/thành</option>
+              <option value="WARDS">Người bán theo xã/phường</option>
             </select>
           </div>
 
-          {['SPECIFIC_BUSINESSES', 'SPECIFIC_PROVINCES'].includes(formData.targetType) && (
+          {['SPECIFIC_SELLERS', 'PROVINCES', 'WARDS'].includes(formData.targetType) && (
             <div className="space-y-2">
               <label className="text-sm font-medium">
                 ID Đối tượng <span className="text-slate-400 font-normal">(Phân cách bằng dấu phẩy)</span>
@@ -151,7 +163,6 @@ export default function CreateCampaignPage() {
                   type="datetime-local" 
                   value={formData.scheduledAt} 
                   onChange={e => setFormData({ ...formData, scheduledAt: e.target.value })} 
-                  min={new Date().toISOString().slice(0, 16)}
                 />
                 <p className="text-xs text-slate-500">Hệ thống sẽ tự động gửi thông báo vào thời gian này.</p>
               </div>

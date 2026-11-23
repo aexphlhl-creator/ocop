@@ -1,3 +1,5 @@
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight } from 'lucide-react';
@@ -59,14 +61,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ open, onClose }) => {
                 items.map((item) => (
                   <div key={item.id} className="flex gap-4 p-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 relative group">
                     <div className="h-20 w-20 rounded-xl overflow-hidden bg-slate-200 shrink-0">
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      <AssetImage src={item.imageUrl || '/images/product-placeholder.svg'} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex flex-col flex-1 justify-between">
                       <div>
                         <h3 className="font-bold text-sm text-slate-900 dark:text-white line-clamp-2 leading-snug">
                           {item.name}
                         </h3>
-                        <p className="text-xs text-slate-500 mt-1">Cung cấp bởi: {item.businessName}</p>
+                        <p className="text-xs text-slate-500 mt-1">Cung cấp bởi: {item.sellerName}</p>
                       </div>
                       <div className="flex items-center justify-between mt-2">
                         <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">

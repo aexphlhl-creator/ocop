@@ -5,7 +5,10 @@ import { Pool } from 'pg';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private pool: Pool;
 
   constructor(configService: ConfigService) {
@@ -23,6 +26,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleDestroy() {
     await this.$disconnect();
-    await this.pool.end();
+    try {
+      if (this.pool && !(this.pool as any).ended) {
+        await this.pool.end();
+      }
+    } catch {
+      // ignore if already ended
+    }
   }
 }

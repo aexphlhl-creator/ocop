@@ -40,7 +40,9 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 async function seedRoles() {
   const roles = [
     [RoleName.ADMIN, 'System administrator'],
-    [RoleName.SELLER, 'OCOP seller and warehouse operator'],
+    [RoleName.SELLER, 'OCOP seller'],
+    [RoleName.WAREHOUSE_MANAGER, 'Warehouse operator'],
+    [RoleName.LOGISTICS, 'Logistics operator'],
     [RoleName.VISITOR, 'Customer and public visitor'],
     [RoleName.EVENT_COORDINATOR, 'Event coordinator'],
   ] as const;
@@ -62,9 +64,13 @@ async function seedUsers(roles: Map<RoleName, { id: string }>) {
   const users = [
     ['admin.enterprise@demo.com', 'Nguyen Minh Anh - Demo Admin', RoleName.ADMIN, '0901000001'],
     ['seller.enterprise@demo.com', 'Tran Quoc Viet - Demo Seller', RoleName.SELLER, '0901000002'],
+    ['seller2.enterprise@demo.com', 'Da Lat Highland Agriculture', RoleName.SELLER, '0901000006'],
+    ['seller3.enterprise@demo.com', 'Mekong Honey Farm', RoleName.SELLER, '0901000007'],
+    ['seller4.enterprise@demo.com', 'Ha Long Seafood Craft', RoleName.SELLER, '0901000008'],
+    ['seller5.enterprise@demo.com', 'Ben Tre Bamboo Workshop', RoleName.SELLER, '0901000009'],
     ['customer.enterprise@demo.com', 'Le Thu Ha - Demo Customer', RoleName.VISITOR, '0901000003'],
     ['event.enterprise@demo.com', 'Pham Ngoc Lan - Event Coordinator', RoleName.EVENT_COORDINATOR, '0901000004'],
-    ['warehouse.enterprise@demo.com', 'Hoang Duc Long - Warehouse Manager', RoleName.SELLER, '0901000005'],
+    ['warehouse.enterprise@demo.com', 'Hoang Duc Long - Warehouse Manager', RoleName.WAREHOUSE_MANAGER, '0901000005'],
   ] as const;
 
   const map = new Map<string, Awaited<ReturnType<typeof prisma.user.upsert>>>();
@@ -77,6 +83,16 @@ async function seedUsers(roles: Map<RoleName, { id: string }>) {
       update: { fullName, phone, roleId: role.id, isActive: true },
       create: { email, fullName, phone, passwordHash, roleId: role.id, isActive: true },
     });
+    if (roleName === RoleName.SELLER) {
+      await prisma.sellerProfile.upsert({
+        where: { sellerId: user.id },
+        update: { displayName: fullName, phone, email },
+        create: { sellerId: user.id, displayName: fullName, phone, email },
+      });
+    } else {
+      // Repair legacy demo data where the warehouse operator was incorrectly a Seller.
+      await prisma.sellerProfile.deleteMany({ where: { sellerId: user.id } });
+    }
     map.set(email, user);
   }
   return map;
@@ -115,11 +131,11 @@ async function seedLookups() {
 
   const stageData = [
     [SupplyChainStageName.HARVEST, 'Harvest', 'Sprout', '#16A34A', 1],
+    [SupplyChainStageName.RECEIVED, 'Material received', 'PackageOpen', '#2563EB', 2],
     [SupplyChainStageName.PROCESSING, 'Processing', 'Factory', '#D97706', 4],
     [SupplyChainStageName.PACKAGING, 'Packaging', 'Box', '#0891B2', 5],
     [SupplyChainStageName.QUALITY_INSPECTION, 'Quality Check', 'FlaskConical', '#7C3AED', 3],
-    [SupplyChainStageName.SHIPPING, 'Shipping', 'Truck', '#DC2626', 7],
-    [SupplyChainStageName.CUSTOMER, 'Delivered', 'UserCheck', '#0D9488', 10],
+    [SupplyChainStageName.WAREHOUSE, 'Warehouse receipt', 'Warehouse', '#059669', 6],
   ] as const;
   const stageMap = new Map<SupplyChainStageName, Awaited<ReturnType<typeof prisma.supplyChainStage.upsert>>>();
   for (const [name, displayName, icon, color, order] of stageData) {
@@ -127,7 +143,14 @@ async function seedLookups() {
       name,
       await prisma.supplyChainStage.upsert({
         where: { name },
-        update: { displayName, icon, color, order, description: `${displayName} milestone for demo traceability` },
+        // Canonical ordering is migration-owned; changing it here can collide
+        // with stages that are not part of this smaller demo subset.
+        update: {
+          displayName,
+          icon,
+          color,
+          description: `${displayName} milestone for demo traceability`,
+        },
         create: { name, displayName, icon, color, order, description: `${displayName} milestone for demo traceability` },
       }),
     );
@@ -184,38 +207,43 @@ async function seedLocations() {
   return result;
 }
 
-async function seedBusinesses(locations: Awaited<ReturnType<typeof seedLocations>>, sellerId: string) {
-  const businessData = [
-    ['D-BIZ-001', 'Bao Minh Tea Cooperative', 'Premium tea and herbal drinks', 0],
-    ['D-BIZ-002', 'Da Lat Highland Agriculture', 'Fresh fruit and dried vegetable processing', 1],
-    ['D-BIZ-003', 'Mekong Honey Farm', 'Honey, coconut and tropical agriculture', 2],
-    ['D-BIZ-004', 'Ha Long Seafood Craft', 'Dried seafood and regional specialties', 3],
-    ['D-BIZ-005', 'Ben Tre Bamboo Workshop', 'Bamboo and coconut handicraft products', 4],
+async function seedSellerProfiles(
+  locations: Awaited<ReturnType<typeof seedLocations>>,
+  users: Awaited<ReturnType<typeof seedUsers>>,
+) {
+  const profileData = [
+    ['seller.enterprise@demo.com', 'D-BIZ-001', 'Bao Minh Tea Cooperative', 'Premium tea and herbal drinks', 0],
+    ['seller2.enterprise@demo.com', 'D-BIZ-002', 'Da Lat Highland Agriculture', 'Fresh fruit and dried vegetable processing', 1],
+    ['seller3.enterprise@demo.com', 'D-BIZ-003', 'Mekong Honey Farm', 'Honey, coconut and tropical agriculture', 2],
+    ['seller4.enterprise@demo.com', 'D-BIZ-004', 'Ha Long Seafood Craft', 'Dried seafood and regional specialties', 3],
+    ['seller5.enterprise@demo.com', 'D-BIZ-005', 'Ben Tre Bamboo Workshop', 'Bamboo and coconut handicraft products', 4],
   ] as const;
 
-  const businesses = [];
-  for (const [taxCode, name, industry, locationIndex] of businessData) {
+  const profiles = [];
+  for (const [sellerEmail, taxCode, name, industry, locationIndex] of profileData) {
     const { province, ward } = locations[locationIndex];
-    businesses.push(
-      await prisma.business.upsert({
-        where: { taxCode },
+    const seller = users.get(sellerEmail);
+    if (!seller) throw new Error(`Missing Seller ${sellerEmail}`);
+    profiles.push(
+      await prisma.sellerProfile.upsert({
+        where: { sellerId: seller.id },
         update: {
-          name,
+          displayName: name,
+          taxCode,
           industry,
           isVerified: true,
-          userId: sellerId,
           wardId: ward.id,
           provinceId: province.id,
         },
         create: {
-          name,
+          sellerId: seller.id,
+          displayName: name,
           taxCode,
           phone: `0902${locationIndex}0000`,
           email: `contact+${taxCode.toLowerCase()}@demo.ocop.vn`,
           address: `${12 + locationIndex} Demo OCOP Road, ${province.name}`,
           description: `${name} is a verified OCOP enterprise prepared for customer demonstrations.`,
           industry,
-          userId: sellerId,
           wardId: ward.id,
           provinceId: province.id,
           isVerified: true,
@@ -223,11 +251,11 @@ async function seedBusinesses(locations: Awaited<ReturnType<typeof seedLocations
       }),
     );
   }
-  return businesses;
+  return profiles;
 }
 
 async function seedProducts(
-  businesses: Awaited<ReturnType<typeof seedBusinesses>>,
+  sellerProfiles: Awaited<ReturnType<typeof seedSellerProfiles>>,
   lookups: Awaited<ReturnType<typeof seedLookups>>,
   adminId: string,
 ) {
@@ -257,7 +285,7 @@ async function seedProducts(
   const products = [];
   for (let i = 0; i < productNames.length; i++) {
     const [name, categorySlug, level, price, unit] = productNames[i];
-    const business = businesses[i % businesses.length];
+    const sellerProfile = sellerProfiles[i % sellerProfiles.length];
     const category = lookups.categoryMap.get(categorySlug);
     const ocopLevel = lookups.ocopMap.get(level);
     if (!category || !ocopLevel) throw new Error(`Missing lookup for ${name}`);
@@ -269,6 +297,10 @@ async function seedProducts(
         price,
         unit,
         status: ProductStatus.APPROVED,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
+        wardId: sellerProfile.wardId!,
+        provinceId: sellerProfile.provinceId!,
         approvedAt: subDays(20 - (i % 10)),
         approvedById: adminId,
       },
@@ -280,9 +312,10 @@ async function seedProducts(
         unit,
         ocopLevelId: ocopLevel.id,
         categoryId: category.id,
-        businessId: business.id,
-        wardId: business.wardId,
-        provinceId: business.provinceId,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
+        wardId: sellerProfile.wardId!,
+        provinceId: sellerProfile.provinceId!,
         latitude: 10.7 + i * 0.28,
         longitude: 105.2 + i * 0.13,
         status: ProductStatus.APPROVED,
@@ -311,16 +344,18 @@ async function seedProducts(
   return products;
 }
 
-async function seedWarehouses(businesses: Awaited<ReturnType<typeof seedBusinesses>>, managerId: string) {
+async function seedWarehouses(sellerProfiles: Awaited<ReturnType<typeof seedSellerProfiles>>, managerId: string) {
   const warehouseData = [
     ['D-WH-HN-01', 'Hanoi Northern Distribution Center', 'No. 88 Vo Chi Cong, Tay Ho, Hanoi', 21.0763, 105.8181, WarehouseType.DISTRIBUTION_CENTER, 0],
     ['D-WH-LD-01', 'Da Lat Cold Storage Hub', 'No. 15 Hung Vuong, Da Lat, Lam Dong', 11.9465, 108.4419, WarehouseType.COLD_STORAGE, 1],
     ['D-WH-CT-01', 'Can Tho Mekong Fulfillment Warehouse', 'No. 22 Nguyen Van Cu, Can Tho', 10.0452, 105.7469, WarehouseType.FINISHED_GOODS, 2],
+    ['D-WH-QN-01', 'Quang Ninh Seafood Warehouse', 'No. 12 Ha Long Road, Quang Ninh', 20.9712, 107.0448, WarehouseType.FINISHED_GOODS, 3],
+    ['D-WH-BT-01', 'Ben Tre Handicraft Warehouse', 'No. 15 Coconut Road, Ben Tre', 10.2434, 106.3756, WarehouseType.FINISHED_GOODS, 4],
   ] as const;
 
   const warehouses = [];
   for (const [code, name, address, latitude, longitude, type, businessIndex] of warehouseData) {
-    const business = businesses[businessIndex];
+    const sellerProfile = sellerProfiles[businessIndex];
     warehouses.push(
       await prisma.warehouse.upsert({
         where: { code },
@@ -330,7 +365,8 @@ async function seedWarehouses(businesses: Awaited<ReturnType<typeof seedBusiness
           latitude,
           longitude,
           type,
-          businessId: business.id,
+          sellerId: sellerProfile.sellerId,
+          businessId: null,
           managerId,
           isActive: true,
         },
@@ -342,7 +378,8 @@ async function seedWarehouses(businesses: Awaited<ReturnType<typeof seedBusiness
           latitude,
           longitude,
           type,
-          businessId: business.id,
+          sellerId: sellerProfile.sellerId,
+          businessId: null,
           managerId,
           isActive: true,
           description: `${name} serves the enterprise OCOP demo inventory flow.`,
@@ -403,6 +440,9 @@ async function seedInventory(products: Awaited<ReturnType<typeof seedProducts>>,
               batchNumber,
               quantity,
               initialQuantity: quantity,
+              declaredQuantity: quantity,
+              declarationIdempotencyKey: `demo-${batchNumber}`,
+              lifecycleStatus: 'QUARANTINED',
               manufactureDate: subDays(45 - batchIndex * 10),
               harvestDate: subDays(55 - batchIndex * 10),
               expiryDate: addDays(120 + batchIndex * 60 + i),
@@ -444,14 +484,14 @@ async function seedSupplyChain(
 ) {
   const flow = [
     [SupplyChainStageName.HARVEST, 'Harvest completed at registered source farm'],
+    [SupplyChainStageName.RECEIVED, 'Raw material lot received and identified'],
+    [SupplyChainStageName.QUALITY_INSPECTION, 'Quality check passed with evidence'],
     [SupplyChainStageName.PROCESSING, 'Processing completed under OCOP SOP'],
     [SupplyChainStageName.PACKAGING, 'Packaging and QR labeling completed'],
-    [SupplyChainStageName.QUALITY_INSPECTION, 'Quality check passed'],
-    [SupplyChainStageName.SHIPPING, 'Shipment dispatched to demo distribution route'],
-    [SupplyChainStageName.CUSTOMER, 'Delivered to customer demo endpoint'],
+    [SupplyChainStageName.WAREHOUSE, 'Finished lot received into assigned warehouse'],
   ] as const;
 
-  for (const { batch, warehouse } of seededBatches.filter((_, index) => index % 2 === 0)) {
+  for (const { batch, product, warehouse } of seededBatches.filter((_, index) => index % 2 === 0)) {
     await prisma.batchJourney.deleteMany({ where: { batchId: batch.id } });
 
     for (let index = 0; index < flow.length; index++) {
@@ -466,8 +506,14 @@ async function seedSupplyChain(
           location: index < 3 ? 'Demo OCOP production facility' : warehouse.name,
           latitude: warehouse.latitude ? Number(warehouse.latitude) + index * 0.002 : undefined,
           longitude: warehouse.longitude ? Number(warehouse.longitude) + index * 0.002 : undefined,
-          actorId,
-          actorName: 'Enterprise Demo Operations Team',
+          actorId:
+            stageName === SupplyChainStageName.WAREHOUSE
+              ? actorId
+              : product.sellerId,
+          actorName:
+            stageName === SupplyChainStageName.WAREHOUSE
+              ? 'Enterprise Demo Warehouse Team'
+              : 'Enterprise Demo Seller Team',
           note,
           imageUrls: [`/images/demo/supply-chain-${index + 1}.jpg`],
           attachmentUrls: [],
@@ -475,6 +521,167 @@ async function seedSupplyChain(
         },
       });
     }
+  }
+}
+
+async function seedTraceabilityMasterData(
+  sellerProfiles: Awaited<ReturnType<typeof seedSellerProfiles>>,
+  seededBatches: Awaited<ReturnType<typeof seedInventory>>,
+  adminId: string,
+) {
+  const sources = new Map<
+    string,
+    { party: Awaited<ReturnType<typeof prisma.traceabilityParty.upsert>>; location: Awaited<ReturnType<typeof prisma.traceabilityLocation.upsert>> }
+  >();
+
+  for (let index = 0; index < sellerProfiles.length; index++) {
+    const profile = sellerProfiles[index];
+    const party = await prisma.traceabilityParty.upsert({
+      where: { code: `D-SOURCE-${String(index + 1).padStart(3, '0')}` },
+      update: {
+        name: profile.displayName,
+        taxCode: profile.taxCode,
+        phone: profile.phone,
+        email: profile.email,
+        isVerified: true,
+        verifiedAt: now,
+        verifiedById: adminId,
+      },
+      create: {
+        code: `D-SOURCE-${String(index + 1).padStart(3, '0')}`,
+        name: profile.displayName,
+        type: 'PRODUCER',
+        taxCode: profile.taxCode,
+        phone: profile.phone,
+        email: profile.email,
+        isVerified: true,
+        verifiedAt: now,
+        createdById: profile.sellerId,
+        verifiedById: adminId,
+      },
+    });
+    const location = await prisma.traceabilityLocation.upsert({
+      where: {
+        partyId_code: { partyId: party.id, code: 'PRIMARY-SOURCE' },
+      },
+      update: {
+        name: `${profile.displayName} production source`,
+        address: profile.address ?? 'Registered OCOP production source',
+        isVerified: true,
+      },
+      create: {
+        partyId: party.id,
+        code: 'PRIMARY-SOURCE',
+        name: `${profile.displayName} production source`,
+        type: 'FARM',
+        address: profile.address ?? 'Registered OCOP production source',
+        countryCode: 'VN',
+        isVerified: true,
+        createdById: profile.sellerId,
+      },
+    });
+    sources.set(profile.sellerId, { party, location });
+  }
+
+  for (const { batch, product } of seededBatches) {
+    const source = sources.get(product.sellerId);
+    if (!source) throw new Error(`Missing traceability source for ${product.id}`);
+    const partySnapshot = {
+      id: source.party.id,
+      code: source.party.code,
+      name: source.party.name,
+      type: source.party.type,
+      gln: source.party.gln,
+      taxCode: source.party.taxCode,
+      isVerified: source.party.isVerified,
+    };
+    const locationSnapshot = {
+      id: source.location.id,
+      code: source.location.code,
+      name: source.location.name,
+      type: source.location.type,
+      gln: source.location.gln,
+      address: source.location.address,
+      ward: source.location.ward,
+      province: source.location.province,
+      countryCode: source.location.countryCode,
+      latitude: source.location.latitude?.toString() ?? null,
+      longitude: source.location.longitude?.toString() ?? null,
+      isVerified: source.location.isVerified,
+    };
+    const declarationPayload = {
+      batchId: batch.id,
+      revision: 1,
+      party: partySnapshot,
+      location: locationSnapshot,
+      sourceLotCode: `SOURCE-${batch.batchNumber}`,
+      countryCode: 'VN',
+      harvestDate: batch.harvestDate?.toISOString() ?? null,
+      manufactureDate: batch.manufactureDate?.toISOString() ?? null,
+      productionMethod: 'Registered OCOP source with controlled lot records.',
+      evidenceUrls: ['/images/demo/origin-evidence.jpg'],
+    };
+    await prisma.batchOriginDeclaration.upsert({
+      where: { batchId_revision: { batchId: batch.id, revision: 1 } },
+      update: {
+        partyId: source.party.id,
+        partySnapshot,
+        locationId: source.location.id,
+        locationSnapshot,
+        sourceLotCode: declarationPayload.sourceLotCode,
+        harvestDate: batch.harvestDate,
+        manufactureDate: batch.manufactureDate,
+        productionMethod: 'Registered OCOP source with controlled lot records.',
+        evidenceUrls: ['/images/demo/origin-evidence.jpg'],
+        declarationHash: sha256(JSON.stringify(declarationPayload)),
+        changeReason: 'Idempotent enterprise demo seed',
+        declaredById: product.sellerId,
+      },
+      create: {
+        batchId: batch.id,
+        revision: 1,
+        partyId: source.party.id,
+        partySnapshot,
+        locationId: source.location.id,
+        locationSnapshot,
+        sourceLotCode: declarationPayload.sourceLotCode,
+        countryCode: 'VN',
+        harvestDate: batch.harvestDate,
+        manufactureDate: batch.manufactureDate,
+        productionMethod: 'Registered OCOP source with controlled lot records.',
+        evidenceUrls: ['/images/demo/origin-evidence.jpg'],
+        declarationHash: sha256(JSON.stringify(declarationPayload)),
+        declaredById: product.sellerId,
+      },
+    });
+  }
+
+  for (let index = 0; index < seededBatches.length; index += 2) {
+    const output = seededBatches[index];
+    const input = seededBatches[index + 1];
+    if (!input || input.product.id !== output.product.id) continue;
+    await prisma.batchMaterialLink.upsert({
+      where: {
+        inputBatchId_outputBatchId_processReference: {
+          inputBatchId: input.batch.id,
+          outputBatchId: output.batch.id,
+          processReference: `DEMO-PROCESS-${String(index / 2 + 1).padStart(3, '0')}`,
+        },
+      },
+      update: {
+        quantity: Math.min(Number(input.batch.quantity), 25),
+        evidenceUrls: ['/images/demo/process-evidence.jpg'],
+      },
+      create: {
+        inputBatchId: input.batch.id,
+        outputBatchId: output.batch.id,
+        quantity: Math.min(Number(input.batch.quantity), 25),
+        unit: output.product.unit,
+        processReference: `DEMO-PROCESS-${String(index / 2 + 1).padStart(3, '0')}`,
+        evidenceUrls: ['/images/demo/process-evidence.jpg'],
+        createdById: output.product.sellerId,
+      },
+    });
   }
 }
 
@@ -537,7 +744,7 @@ async function seedCertificates(
 }
 
 async function seedProcurement(
-  businesses: Awaited<ReturnType<typeof seedBusinesses>>,
+  sellerProfiles: Awaited<ReturnType<typeof seedSellerProfiles>>,
   warehouses: Awaited<ReturnType<typeof seedWarehouses>>,
   products: Awaited<ReturnType<typeof seedProducts>>,
   batches: Awaited<ReturnType<typeof seedInventory>>,
@@ -549,7 +756,12 @@ async function seedProcurement(
     suppliers.push(
       await prisma.supplier.upsert({
         where: { code: `D-SUP-${String(i + 1).padStart(3, '0')}` },
-        update: { isActive: true, rating: 4.2 + i * 0.1 },
+        update: {
+          isActive: true,
+          rating: 4.2 + i * 0.1,
+          sellerId: sellerProfiles[i % sellerProfiles.length].sellerId,
+          businessId: null,
+        },
         create: {
           code: `D-SUP-${String(i + 1).padStart(3, '0')}`,
           name: `Enterprise Demo Supplier ${i + 1}`,
@@ -563,14 +775,15 @@ async function seedProcurement(
           paymentTerms: 'Net 15',
           rating: 4.2 + i * 0.1,
           contactPerson: `Supplier Contact ${i + 1}`,
-          businessId: businesses[i % businesses.length].id,
+          sellerId: sellerProfiles[i % sellerProfiles.length].sellerId,
+          businessId: null,
         },
       }),
     );
   }
 
   for (let i = 0; i < 6; i++) {
-    const business = businesses[i % businesses.length];
+    const sellerProfile = sellerProfiles[i % sellerProfiles.length];
     const warehouse = warehouses[i % warehouses.length];
     const supplier = suppliers[i % suppliers.length];
     const code = `D-PO-${String(i + 1).padStart(4, '0')}`;
@@ -580,14 +793,16 @@ async function seedProcurement(
         status: POStatus.COMPLETED,
         supplierId: supplier.id,
         warehouseId: warehouse.id,
-        businessId: business.id,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
         approvedById,
       },
       create: {
         code,
         supplierId: supplier.id,
         warehouseId: warehouse.id,
-        businessId: business.id,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
         orderDate: subDays(25 - i),
         expectedDeliveryDate: subDays(15 - i),
         submittedAt: subDays(24 - i),
@@ -617,12 +832,13 @@ async function seedProcurement(
     const grCode = `D-GR-${String(i + 1).padStart(4, '0')}`;
     const gr = await prisma.goodsReceipt.upsert({
       where: { code: grCode },
-      update: { purchaseOrderId: po.id, warehouseId: warehouse.id, businessId: business.id, receivedById },
+      update: { purchaseOrderId: po.id, warehouseId: warehouse.id, sellerId: sellerProfile.sellerId, businessId: null, receivedById },
       create: {
         code: grCode,
         purchaseOrderId: po.id,
         warehouseId: warehouse.id,
-        businessId: business.id,
+        sellerId: sellerProfile.sellerId,
+        businessId: null,
         receivedById,
         receivedDate: subDays(14 - i),
         notes: 'Enterprise demo goods receipt with quality pass.',
@@ -768,14 +984,19 @@ async function main() {
   const users = await seedUsers(roles);
   const lookups = await seedLookups();
   const locations = await seedLocations();
-  const businesses = await seedBusinesses(locations, users.get('seller.enterprise@demo.com')!.id);
-  const products = await seedProducts(businesses, lookups, users.get('admin.enterprise@demo.com')!.id);
-  const warehouses = await seedWarehouses(businesses, users.get('warehouse.enterprise@demo.com')!.id);
+  const sellerProfiles = await seedSellerProfiles(locations, users);
+  const products = await seedProducts(sellerProfiles, lookups, users.get('admin.enterprise@demo.com')!.id);
+  const warehouses = await seedWarehouses(sellerProfiles, users.get('warehouse.enterprise@demo.com')!.id);
   const batches = await seedInventory(products, warehouses, users.get('warehouse.enterprise@demo.com')!.id);
+  await seedTraceabilityMasterData(
+    sellerProfiles,
+    batches,
+    users.get('admin.enterprise@demo.com')!.id,
+  );
   await seedSupplyChain(batches, lookups.stageMap, users.get('warehouse.enterprise@demo.com')!.id);
   await seedCertificates(batches, lookups.certMap, users.get('admin.enterprise@demo.com')!.id);
   await seedProcurement(
-    businesses,
+    sellerProfiles,
     warehouses,
     products,
     batches,
@@ -786,8 +1007,8 @@ async function main() {
 
   console.log('Enterprise OCOP demo dataset seeded successfully.');
   console.table({
-    users: 5,
-    businesses: businesses.length,
+    users: users.size,
+    sellerProfiles: sellerProfiles.length,
     products: products.length,
     warehouses: warehouses.length,
     inventoryBatches: batches.length,

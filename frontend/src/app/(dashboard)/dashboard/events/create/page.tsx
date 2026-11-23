@@ -1,6 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import { getErrorMessage } from '@/utils/api-error';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
+import React, { useEffect, useState } from 'react';
 import { api } from '@/services/api';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, Save, MapPin } from 'lucide-react';
@@ -10,9 +14,11 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth.store';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function CreateEventPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,6 +37,8 @@ export default function CreateEventPage() {
   });
   const [coverImage, setCoverImage] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState('');
+
+  useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -66,40 +74,56 @@ export default function CreateEventPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.startDate || !formData.endDate) {
+    if (!formData.title.trim() || !formData.startDate || !formData.endDate || !formData.description.trim()) {
       toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
+      return;
+    }
+    if (loading) return;
+    if (user?.role !== 'ADMIN' && user?.role !== 'EVENT_COORDINATOR') {
+      toast.error('Bạn không có quyền tạo sự kiện');
+      return;
+    }
+    if (new Date(formData.endDate) <= new Date(formData.startDate)) {
+      toast.error('Thời gian kết thúc phải sau thời gian bắt đầu');
+      return;
+    }
+    const maxParticipants = formData.maxParticipants ? Number(formData.maxParticipants) : undefined;
+    if (maxParticipants !== undefined && (!Number.isSafeInteger(maxParticipants) || maxParticipants < 1)) {
+      toast.error('Số người tham gia tối đa phải là số nguyên dương');
       return;
     }
 
     try {
       setLoading(true);
       
-      // Submit text data first
-      const payload = {
-        ...formData,
-        maxParticipants: formData.maxParticipants ? parseInt(formData.maxParticipants) : undefined,
-      };
-
-      const { data } = await api.post('/api/v1/events', payload);
-      const eventId = data.id;
-
-      // If there's an image, upload it
+      let uploadedCover: string | undefined;
       if (coverImage) {
         const formDataImg = new FormData();
         formDataImg.append('file', coverImage);
         
-        // Assume an endpoint exists to upload event cover, or use a general media upload and update event
-        const uploadRes = await api.post('/api/v1/media/upload', formDataImg, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        
-        await api.patch(`/api/v1/events/${eventId}`, { coverImage: uploadRes.data.url });
+        const uploadRes = await api.post<{ data: { url: string } }>('/api/v1/media/upload?folder=events', formDataImg);
+        uploadedCover = uploadRes.data.data.url;
+        if (!uploadedCover) throw new Error('Tải ảnh lên không trả về đường dẫn');
       }
 
+      // The API accepts summary + description, not the editor's content field.
+      const { content, description, ...fields } = formData;
+      await api.post('/api/v1/events', {
+        ...fields,
+        title: formData.title.trim(),
+        summary: description.trim(),
+        description: content.trim() || description.trim(),
+        startDate: new Date(formData.startDate).toISOString(),
+        endDate: new Date(formData.endDate).toISOString(),
+        maxParticipants,
+        coverImage: uploadedCover,
+      });
+
+      await Promise.all(['dashboardEvents', 'dashboardRecentEvents'].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
       toast.success('Tạo sự kiện thành công');
       router.push('/dashboard/events');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Lỗi khi tạo sự kiện');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Lỗi khi tạo sự kiện'));
     } finally {
       setLoading(false);
     }
@@ -184,7 +208,7 @@ export default function CreateEventPage() {
           <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer relative overflow-hidden">
             <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
             {coverPreview ? (
-              <img src={coverPreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
+              <AssetImage src={coverPreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
             ) : (
               <div className="flex flex-col items-center justify-center py-4">
                 <Upload className="w-10 h-10 text-slate-400 mb-2" />

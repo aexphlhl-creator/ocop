@@ -13,7 +13,7 @@ export interface CertificateRecordJobData {
 
 export interface SupplyChainRecordJobData {
   type: BlockchainJobType.SUPPLY_CHAIN_RECORD;
-  journeyId: string;
+  journeyId?: string | null;
   productId: string;
   batchId: string;
   payload: Prisma.InputJsonObject;
@@ -21,7 +21,8 @@ export interface SupplyChainRecordJobData {
   reqId?: string;
 }
 
-export type BlockchainJobData = CertificateRecordJobData | SupplyChainRecordJobData;
+export type BlockchainJobData =
+  CertificateRecordJobData | SupplyChainRecordJobData;
 
 export interface BlockchainJobResponseDto {
   id: string;

@@ -1,5 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -15,7 +20,10 @@ export class DashboardController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Lấy các chỉ số thống kê tổng hợp số lượng bản ghi (Chỉ dành cho ADMIN)' })
+  @ApiOperation({
+    summary:
+      'Lấy các chỉ số thống kê tổng hợp số lượng bản ghi (Chỉ dành cho ADMIN)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Chỉ số thống kê thành công',
@@ -27,7 +35,7 @@ export class DashboardController {
           type: 'object',
           properties: {
             users: { type: 'number', example: 12 },
-            businesses: { type: 'number', example: 5 },
+            sellers: { type: 'number', example: 5 },
             products: { type: 'number', example: 25 },
             approvedProducts: { type: 'number', example: 18 },
             pendingProducts: { type: 'number', example: 5 },
@@ -42,7 +50,10 @@ export class DashboardController {
     },
   })
   @ApiResponse({ status: 401, description: 'Chưa đăng nhập' })
-  @ApiResponse({ status: 403, description: 'Không phải tài khoản quản trị ADMIN' })
+  @ApiResponse({
+    status: 403,
+    description: 'Không phải tài khoản quản trị ADMIN',
+  })
   async getCounts() {
     return this.dashboardService.getCounts();
   }

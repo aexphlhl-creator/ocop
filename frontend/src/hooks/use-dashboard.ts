@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
+import type { Product, ApiResponse } from '@/types/catalog';
+import { useAuthStore } from '@/stores/auth.store';
 
 export const useAdminDashboard = (enabled: boolean) => {
   return useQuery({
@@ -70,11 +72,16 @@ export const useProductsByProvince = () => {
 };
 
 export const useMyProducts = (enabled: boolean) => {
+  const userId = useAuthStore(state => state.user?.id);
   return useQuery({
-    queryKey: ['myProducts'],
+    queryKey: ['myProducts', userId],
     queryFn: async () => {
-      const response = await api.get('/api/v1/products/my');
-      return response.data.data;
+      const items: Product[] = [];
+      for (let page = 1; ; page++) {
+        const response = await api.get<ApiResponse<Product[]>>('/api/v1/products/my', { params: { page, limit: 100 } });
+        items.push(...response.data.data);
+        if (page >= (response.data.meta?.totalPages ?? 1)) return items;
+      }
     },
     enabled,
     staleTime: 2 * 60 * 1000,

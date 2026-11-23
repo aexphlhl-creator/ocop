@@ -8,6 +8,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { ClsModule } from 'nestjs-cls';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { randomUUID } from 'crypto';
+import type { Request } from 'express';
 import { PrismaModule } from './features/prisma/prisma.module';
 import { RedisModule } from './features/redis/redis.module';
 import { AuthModule } from './features/auth/auth.module';
@@ -27,7 +28,6 @@ import { OrdersModule } from './features/orders/orders.module';
 import { PaymentsModule } from './features/payments/payments.module';
 import { ReviewsModule } from './features/reviews/reviews.module';
 import { VouchersModule } from './features/vouchers/vouchers.module';
-import { UpgradesModule } from './features/upgrades/upgrades.module';
 import { BlockchainModule } from './features/blockchain/blockchain.module';
 import { BlockchainQueueModule } from './features/blockchain-queue/blockchain-queue.module';
 import { InventoryModule } from './features/inventory/inventory.module';
@@ -35,17 +35,21 @@ import { SupplyChainModule } from './features/supply-chain/supply-chain.module';
 import { CertificatesModule } from './features/certificates/certificates.module';
 import { TraceabilityModule } from './features/traceability/traceability.module';
 import { UsersModule } from './features/users/users.module';
-import { ProcurementModule } from './features/procurement/procurement.module';
 
 import { ThrottlerModule } from '@nestjs/throttler';
 import { EventsModule } from './features/events/events.module';
+import { CategoriesModule } from './features/categories/categories.module';
+import { OcopLevelsModule } from './features/ocop-levels/ocop-levels.module';
+import { ShipmentsModule } from './features/shipments/shipments.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 10,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
@@ -54,19 +58,30 @@ import { EventsModule } from './features/events/events.module';
     }),
     ClsModule.forRoot({
       global: true,
-      middleware: { mount: true, setup: (cls, req) => {
-        const reqId = req.headers['x-correlation-id'] || randomUUID();
-        cls.set('reqId', reqId);
-      }},
+      middleware: {
+        mount: true,
+        setup: (cls, req: Request) => {
+          const reqId = req.headers['x-correlation-id'] || randomUUID();
+          cls.set('reqId', reqId);
+        },
+      },
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-        genReqId: (req) => req.headers['x-correlation-id'] || req.id || randomUUID(),
-        transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
+        genReqId: (req) =>
+          req.headers['x-correlation-id'] || req.id || randomUUID(),
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { singleLine: true } }
+            : undefined,
         level: process.env.NODE_ENV !== 'production' ? 'debug' : 'info',
         redact: {
-          paths: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-api-key"]'],
-          censor: '[REDACTED]'
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers["x-api-key"]',
+          ],
+          censor: '[REDACTED]',
         },
       },
     }),
@@ -96,7 +111,6 @@ import { EventsModule } from './features/events/events.module';
     PaymentsModule,
     ReviewsModule,
     VouchersModule,
-    UpgradesModule,
     BlockchainModule,
     BlockchainQueueModule,
     InventoryModule,
@@ -104,8 +118,10 @@ import { EventsModule } from './features/events/events.module';
     CertificatesModule,
     TraceabilityModule,
     UsersModule,
-    ProcurementModule,
     EventsModule,
+    ShipmentsModule,
+    CategoriesModule,
+    OcopLevelsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

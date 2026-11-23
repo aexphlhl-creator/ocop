@@ -1,25 +1,44 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { NotificationCampaignsService } from './notification-campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { RoleName } from '@prisma/client';
+import { NotificationCampaignStatus, RoleName } from '@prisma/client';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { RequestUser } from '../../auth/interfaces/jwt-payload.interface';
 
 @ApiTags('Notification Campaigns')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('notification-campaigns')
+@Controller('api/v1/notification-campaigns')
 export class NotificationCampaignsController {
-  constructor(private readonly notificationCampaignsService: NotificationCampaignsService) {}
+  constructor(
+    private readonly notificationCampaignsService: NotificationCampaignsService,
+  ) {}
 
   @Post()
   @Roles(RoleName.ADMIN, RoleName.EVENT_COORDINATOR)
   @ApiOperation({ summary: 'Tạo chiến dịch thông báo mới' })
-  create(@Body() createCampaignDto: CreateCampaignDto, @CurrentUser() user: RequestUser) {
+  create(
+    @Body() createCampaignDto: CreateCampaignDto,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.notificationCampaignsService.create(createCampaignDto, user);
   }
 
@@ -28,11 +47,24 @@ export class NotificationCampaignsController {
   @ApiOperation({ summary: 'Lấy danh sách chiến dịch' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: NotificationCampaignStatus,
+  })
   findAll(
     @Query('page') page?: number,
-    @Query('limit') limit?: number
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('status') status?: NotificationCampaignStatus,
   ) {
-    return this.notificationCampaignsService.findAll(Number(page) || 1, Number(limit) || 10);
+    return this.notificationCampaignsService.findAll(
+      Number(page) || 1,
+      Number(limit) || 10,
+      search,
+      status,
+    );
   }
 
   @Get(':id')

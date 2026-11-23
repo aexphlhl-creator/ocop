@@ -29,7 +29,7 @@ describe('DashboardService', () => {
     redisService = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
-    } as any;
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -48,7 +48,9 @@ describe('DashboardService', () => {
 
   describe('getCounts', () => {
     it('should hit cache if exists', async () => {
-      jest.spyOn(redisService, 'get').mockResolvedValue(JSON.stringify(mockCounts));
+      jest
+        .spyOn(redisService, 'get')
+        .mockResolvedValue(JSON.stringify(mockCounts));
 
       const result = await service.getCounts();
 

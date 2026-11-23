@@ -9,13 +9,34 @@ export class InventoryRepository {
   // ── Warehouse ──────────────────────────────────────────────────────────────
 
   async createWarehouse(data: Prisma.WarehouseCreateInput) {
-    return this.prisma.warehouse.create({ data, include: { manager: { select: { id: true, fullName: true } } } });
+    return this.prisma.warehouse.create({
+      data,
+      include: {
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            sellerProfile: { select: { displayName: true, isVerified: true } },
+          },
+        },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
   }
 
   async findWarehouses(managerId?: string) {
     return this.prisma.warehouse.findMany({
       where: managerId ? { managerId } : undefined,
       include: {
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            sellerProfile: { select: { displayName: true, isVerified: true } },
+          },
+        },
         manager: { select: { id: true, fullName: true } },
         _count: { select: { inventories: true } },
       },
@@ -24,7 +45,20 @@ export class InventoryRepository {
   }
 
   async findWarehouseById(id: string) {
-    return this.prisma.warehouse.findUnique({ where: { id }, include: { manager: { select: { id: true, fullName: true } } } });
+    return this.prisma.warehouse.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            sellerProfile: { select: { displayName: true, isVerified: true } },
+          },
+        },
+        manager: { select: { id: true, fullName: true } },
+      },
+    });
   }
 
   // ── Inventory ──────────────────────────────────────────────────────────────
@@ -32,7 +66,15 @@ export class InventoryRepository {
   async createInventory(data: Prisma.InventoryCreateInput) {
     return this.prisma.inventory.create({
       data,
-      include: { warehouse: true, product: { include: { images: { take: 1 }, business: { select: { userId: true } } } } },
+      include: {
+        warehouse: true,
+        product: {
+          include: {
+            images: { take: 1 },
+            seller: { select: { id: true } },
+          },
+        },
+      },
     });
   }
 
@@ -42,25 +84,31 @@ export class InventoryRepository {
     search?: string;
     page: number;
     limit: number;
-    managerUserId?: string; // For SELLER scoping
+    sellerOwnerId?: string;
+    warehouseManagerId?: string;
   }) {
     const skip = (params.page - 1) * params.limit;
-    const where: Prisma.InventoryWhereInput = {};
+    const filters: Prisma.InventoryWhereInput[] = [];
 
-    if (params.warehouseId) where.warehouseId = params.warehouseId;
-    if (params.productId) where.productId = params.productId;
-    if (params.managerUserId) {
-      where.product = {
-        ...((where.product as any) || {}),
-        business: { userId: params.managerUserId },
-      };
+    if (params.warehouseId) filters.push({ warehouseId: params.warehouseId });
+    if (params.productId) filters.push({ productId: params.productId });
+    if (params.sellerOwnerId) {
+      filters.push({
+        product: { sellerId: params.sellerOwnerId },
+      });
+    }
+    if (params.warehouseManagerId) {
+      filters.push({
+        warehouse: { managerId: params.warehouseManagerId },
+      });
     }
     if (params.search) {
-      where.product = {
-        ...((where.product as any) || {}),
-        name: { contains: params.search, mode: 'insensitive' },
-      };
+      filters.push({
+        product: { name: { contains: params.search, mode: 'insensitive' } },
+      });
     }
+    const where: Prisma.InventoryWhereInput =
+      filters.length > 0 ? { AND: filters } : {};
 
     const [items, total] = await Promise.all([
       this.prisma.inventory.findMany({
@@ -70,13 +118,37 @@ export class InventoryRepository {
         orderBy: { updatedAt: 'desc' },
         include: {
           warehouse: true,
-          product: { include: { images: { take: 1 }, business: { select: { userId: true } } } },
+          product: {
+            include: {
+              images: { take: 1 },
+              seller: { select: { id: true } },
+            },
+          },
           _count: { select: { batches: true } },
+          batches: {
+            where: {
+              status: 'ACTIVE',
+              lifecycleStatus: 'RELEASED',
+              qualityStatus: 'PASSED',
+              OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+            },
+            select: { quantity: true },
+          },
         },
       }),
       this.prisma.inventory.count({ where }),
     ]);
-    return { items, total };
+    return {
+      items: items.map(({ batches, ...inventory }) => ({
+        ...inventory,
+        availableQuantity: Math.max(
+          batches.reduce((sum, batch) => sum + batch.quantity, 0) -
+            inventory.reservedQuantity,
+          0,
+        ),
+      })),
+      total,
+    };
   }
 
   async findInventoryById(id: string) {
@@ -84,14 +156,24 @@ export class InventoryRepository {
       where: { id },
       include: {
         warehouse: true,
-        product: { include: { images: { take: 1 }, business: { select: { userId: true } } } },
+        product: {
+          include: {
+            images: { take: 1 },
+            seller: { select: { id: true } },
+          },
+        },
         batches: { where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } },
       },
     });
   }
 
-  async findInventoryByWarehouseAndProduct(warehouseId: string, productId: string) {
-    return this.prisma.inventory.findUnique({ where: { warehouseId_productId: { warehouseId, productId } } });
+  async findInventoryByWarehouseAndProduct(
+    warehouseId: string,
+    productId: string,
+  ) {
+    return this.prisma.inventory.findUnique({
+      where: { warehouseId_productId: { warehouseId, productId } },
+    });
   }
 
   async updateInventoryQuantities(
@@ -108,23 +190,37 @@ export class InventoryRepository {
   }
 
   async updateMinimumQuantity(id: string, minimumQuantity: number) {
-    return this.prisma.inventory.update({ where: { id }, data: { minimumQuantity } });
+    return this.prisma.inventory.update({
+      where: { id },
+      data: { minimumQuantity },
+    });
   }
 
   // Low-stock: returns all with minimumQuantity > 0, service will filter
-  async findLowStockInventories(managerUserId?: string) {
+  async findLowStockInventories(sellerOwnerId?: string) {
     return this.prisma.inventory.findMany({
       where: {
         minimumQuantity: { gt: 0 },
-        ...(managerUserId ? { product: { business: { userId: managerUserId } } } : {}),
+        ...(sellerOwnerId ? { product: { sellerId: sellerOwnerId } } : {}),
       },
-      include: { warehouse: true, product: { include: { images: { take: 1 }, business: { select: { userId: true } } } } },
+      include: {
+        warehouse: true,
+        product: {
+          include: {
+            images: { take: 1 },
+            seller: { select: { id: true } },
+          },
+        },
+      },
     });
   }
 
   // ── Batch ──────────────────────────────────────────────────────────────────
 
-  async createBatch(data: Prisma.InventoryBatchCreateInput, tx?: Prisma.TransactionClient) {
+  async createBatch(
+    data: Prisma.InventoryBatchCreateInput,
+    tx?: Prisma.TransactionClient,
+  ) {
     const client = tx ?? this.prisma;
     return client.inventoryBatch.create({ data });
   }
@@ -144,27 +240,56 @@ export class InventoryRepository {
     });
   }
 
-  async updateBatch(id: string, data: Prisma.InventoryBatchUpdateInput, tx?: Prisma.TransactionClient) {
+  async updateBatch(
+    id: string,
+    data: Prisma.InventoryBatchUpdateInput,
+    tx?: Prisma.TransactionClient,
+  ) {
     const client = tx ?? this.prisma;
     return client.inventoryBatch.update({ where: { id }, data });
   }
 
   async countBatchByNumber(inventoryId: string, batchNumber: string) {
-    return this.prisma.inventoryBatch.count({ where: { inventoryId, batchNumber } });
+    return this.prisma.inventoryBatch.count({
+      where: { inventoryId, batchNumber },
+    });
   }
 
   // Batches expiring within `daysAhead` days
-  async findExpiringBatches(daysAhead: number, managerUserId?: string) {
+  async findExpiringBatches(
+    daysAhead: number,
+    sellerOwnerId?: string,
+    warehouseManagerId?: string,
+  ) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + daysAhead);
     return this.prisma.inventoryBatch.findMany({
       where: {
         expiryDate: { lte: cutoff, gte: new Date() },
         status: 'ACTIVE',
-        ...(managerUserId ? { inventory: { product: { business: { userId: managerUserId } } } } : {}),
+        ...(sellerOwnerId
+          ? {
+              inventory: {
+                product: { sellerId: sellerOwnerId },
+              },
+            }
+          : {}),
+        ...(warehouseManagerId
+          ? { inventory: { warehouse: { managerId: warehouseManagerId } } }
+          : {}),
       },
       include: {
-        inventory: { include: { warehouse: true, product: { include: { images: { take: 1 }, business: { select: { userId: true } } } } } },
+        inventory: {
+          include: {
+            warehouse: true,
+            product: {
+              include: {
+                images: { take: 1 },
+                seller: { select: { id: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { expiryDate: 'asc' },
     });
@@ -172,9 +297,18 @@ export class InventoryRepository {
 
   // ── StockMovement ──────────────────────────────────────────────────────────
 
-  async createMovement(data: Prisma.StockMovementCreateInput, tx?: Prisma.TransactionClient) {
+  async createMovement(
+    data: Prisma.StockMovementCreateInput,
+    tx?: Prisma.TransactionClient,
+  ) {
     const client = tx ?? this.prisma;
-    return client.stockMovement.create({ data, include: { batch: true, createdBy: { select: { id: true, fullName: true } } } });
+    return client.stockMovement.create({
+      data,
+      include: {
+        batch: true,
+        createdBy: { select: { id: true, fullName: true } },
+      },
+    });
   }
 
   async findMovements(params: {
@@ -184,7 +318,8 @@ export class InventoryRepository {
     toDate?: Date;
     page: number;
     limit: number;
-    managerUserId?: string;
+    sellerOwnerId?: string;
+    warehouseManagerId?: string;
   }) {
     const skip = (params.page - 1) * params.limit;
     const where: Prisma.StockMovementWhereInput = {};
@@ -196,8 +331,15 @@ export class InventoryRepository {
       if (params.fromDate) where.createdAt.gte = params.fromDate;
       if (params.toDate) where.createdAt.lte = params.toDate;
     }
-    if (params.managerUserId) {
-      where.inventory = { product: { business: { userId: params.managerUserId } } };
+    if (params.sellerOwnerId) {
+      where.inventory = {
+        product: { sellerId: params.sellerOwnerId },
+      };
+    }
+    if (params.warehouseManagerId) {
+      where.inventory = {
+        warehouse: { managerId: params.warehouseManagerId },
+      };
     }
 
     const [items, total] = await Promise.all([
@@ -219,25 +361,35 @@ export class InventoryRepository {
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
-  async getStats(managerUserId?: string) {
-    const warehouseWhere = managerUserId
-      ? { warehouse: { managerId: managerUserId } }
-      : undefined;
+  async getStats(sellerOwnerId?: string, warehouseManagerId?: string) {
+    const inventoryWhere: Prisma.InventoryWhereInput | undefined = sellerOwnerId
+      ? { product: { sellerId: sellerOwnerId } }
+      : warehouseManagerId
+        ? { warehouse: { managerId: warehouseManagerId } }
+        : undefined;
 
-    const [totalSKUs, totalQuantity, lowStockCount, expiringCount] = await Promise.all([
-      this.prisma.inventory.count({ where: warehouseWhere }),
-      this.prisma.inventory.aggregate({ _sum: { currentQuantity: true }, where: warehouseWhere }),
-      this.prisma.inventory.count({
-        where: { minimumQuantity: { gt: 0 }, currentQuantity: { lte: 0 }, ...warehouseWhere },
-      }),
-      this.prisma.inventoryBatch.count({
-        where: {
-          status: 'ACTIVE',
-          expiryDate: { lte: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
-          ...(managerUserId ? { inventory: { warehouse: { managerId: managerUserId } } } : {}),
-        },
-      }),
-    ]);
+    const [totalSKUs, totalQuantity, lowStockCount, expiringCount] =
+      await Promise.all([
+        this.prisma.inventory.count({ where: inventoryWhere }),
+        this.prisma.inventory.aggregate({
+          _sum: { currentQuantity: true },
+          where: inventoryWhere,
+        }),
+        this.prisma.inventory.count({
+          where: {
+            minimumQuantity: { gt: 0 },
+            currentQuantity: { lte: 0 },
+            ...inventoryWhere,
+          },
+        }),
+        this.prisma.inventoryBatch.count({
+          where: {
+            status: 'ACTIVE',
+            expiryDate: { lte: new Date(Date.now() + 30 * 24 * 3600 * 1000) },
+            ...(inventoryWhere ? { inventory: inventoryWhere } : {}),
+          },
+        }),
+      ]);
 
     return {
       totalSKUs,

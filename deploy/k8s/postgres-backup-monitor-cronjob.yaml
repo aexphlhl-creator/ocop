@@ -1,0 +1,84 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ocop-postgres-backup-monitor
+  namespace: ocop-production
+  labels:
+    app.kubernetes.io/name: ocop-postgres-backup-monitor
+    app.kubernetes.io/part-of: ocop-platform
+spec:
+  # Independent S3 Backup Monitor: checks backup existence, integrity & RPO freshness every 15 minutes
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ocop-postgres-backup-monitor
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1000
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+          containers:
+            - name: postgres-backup-monitor
+              image: ghcr.io/ocop/ocop-backend:production
+              workingDir: /usr/src/app
+              command:
+                - node
+                - scripts/monitor-backup-s3.mjs
+              env:
+                - name: NODE_ENV
+                  value: "production"
+                - name: BACKUP_S3_BUCKET
+                  value: "ocop-prod-backups-cold-storage"
+                - name: BACKUP_S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ocop-config
+                      key: BACKUP_S3_ENDPOINT
+                - name: BACKUP_S3_PORT
+                  value: "443"
+                - name: BACKUP_S3_USE_SSL
+                  value: "true"
+                - name: BACKUP_S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ocop-secrets
+                      key: BACKUP_S3_ACCESS_KEY
+                - name: BACKUP_S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ocop-secrets
+                      key: BACKUP_S3_SECRET_KEY
+                - name: BACKUP_HMAC_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: ocop-secrets
+                      key: BACKUP_HMAC_SECRET
+                - name: BACKUP_ALERT_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: ocop-secrets
+                      key: BACKUP_ALERT_WEBHOOK_URL
+                - name: HOURLY_RPO_MINUTES
+                  value: "60"
+                - name: HOURLY_RPO_WARN_MINUTES
+                  value: "50"
+                - name: DAILY_RPO_HOURS
+                  value: "24"
+                - name: DAILY_RPO_WARN_HOURS
+                  value: "22"
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"

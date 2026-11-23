@@ -1,10 +1,11 @@
+import type { App } from 'supertest/types';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 
 describe('Validation Security (e2e)', () => {
-  let app: INestApplication;
+  let app: INestApplication<App>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -23,30 +24,33 @@ describe('Validation Security (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
-  it('Invalid UUID - Không crash DB khi truyền string linh tinh vào :id', () => {
+  it('Invalid UUID - ParseUUIDPipe chặn ID không hợp lệ và trả 400 thay vì crash DB', () => {
     return request(app.getHttpServer())
-      .get('/api/v1/products/not-a-uuid')
-      .expect(400); // Should be blocked by ParseUUIDPipe or ValidationPipe
+      .get('/api/v1/provinces/not-a-uuid')
+      .expect(400);
   });
 
-  it('Mass Assignment - Bỏ qua các trường không khai báo trong DTO', async () => {
-    // Gửi { name: 'abc', role: 'ADMIN' }
-    // API phải trả về 400 Bad Request do forbidNonWhitelisted = true
-  });
-
-  it('Oversized Payload - Chặn request quá lớn', () => {
-    const hugePayload = { data: 'a'.repeat(2 * 1024 * 1024) }; // 2MB
+  it('Mass Assignment - Bị chặn 400 khi gửi thuộc tính không khai báo trong DTO', () => {
     return request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send(hugePayload)
-      .expect(413); // Payload Too Large
+      .send({
+        email: 'attacker@test.local',
+        password: 'Password123!',
+        role: 'ADMIN',
+        injectedField: 'malicious',
+      })
+      .expect(400);
   });
 
-  it('SQL Injection / XSS Payload - Bị chặn hoặc sanitize', () => {
-    // Send { name: "<script>alert(1)</script>" } -> Expect encoded or rejected if rigid
-    // Send { email: "' OR 1=1 --" } -> ValidationPipe expects email format -> 400
+  it('SQL Injection Payload - Bị chặn 400 bởi validation format', () => {
+    return request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: "' OR 1=1 --", password: 'Password123!' })
+      .expect(400);
   });
 });

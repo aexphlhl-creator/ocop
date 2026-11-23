@@ -3,10 +3,12 @@ import { Filter, X } from 'lucide-react';
 import { Input } from '../ui/input';
 
 interface BatchFiltersProps {
-  filter: any;
-  setFilter: (filter: any) => void;
-  stages: any[];
+  filter: HistoryFilter;
+  setFilter: React.Dispatch<React.SetStateAction<HistoryFilter>>;
+  stages: Array<{ id: string; displayName: string }>;
 }
+
+interface HistoryFilter { stageId: string; actorName: string; dateFrom: string; dateTo: string; page: number }
 
 export function BatchFilters({ filter, setFilter, stages }: BatchFiltersProps) {
   const hasActiveFilters = filter.stageId || filter.actorName || filter.dateFrom || filter.dateTo;
@@ -21,11 +23,11 @@ export function BatchFilters({ filter, setFilter, stages }: BatchFiltersProps) {
           <label className="text-xs text-slate-400 mb-1 block">Công đoạn</label>
           <select
             value={filter.stageId}
-            onChange={(e) => setFilter((f: any) => ({ ...f, stageId: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter((f) => ({ ...f, stageId: e.target.value, page: 1 }))}
             className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">Tất cả</option>
-            {stages.map((s: any) => (
+            {stages.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.displayName}
               </option>
@@ -37,7 +39,7 @@ export function BatchFilters({ filter, setFilter, stages }: BatchFiltersProps) {
           <Input
             placeholder="Tìm theo tên..."
             value={filter.actorName}
-            onChange={(e) => setFilter((f: any) => ({ ...f, actorName: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter((f) => ({ ...f, actorName: e.target.value, page: 1 }))}
           />
         </div>
         <div>
@@ -45,7 +47,7 @@ export function BatchFilters({ filter, setFilter, stages }: BatchFiltersProps) {
           <Input
             type="date"
             value={filter.dateFrom}
-            onChange={(e) => setFilter((f: any) => ({ ...f, dateFrom: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter((f) => ({ ...f, dateFrom: e.target.value, page: 1 }))}
           />
         </div>
         <div>
@@ -53,7 +55,7 @@ export function BatchFilters({ filter, setFilter, stages }: BatchFiltersProps) {
           <Input
             type="date"
             value={filter.dateTo}
-            onChange={(e) => setFilter((f: any) => ({ ...f, dateTo: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter((f) => ({ ...f, dateTo: e.target.value, page: 1 }))}
           />
         </div>
       </div>

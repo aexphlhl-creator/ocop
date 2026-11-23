@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Boxes, PackagePlus, Truck, CheckCircle2, ShieldCheck, Clock, AlertTriangle, Search } from 'lucide-react';
+import { Boxes, PackagePlus, Truck, CheckCircle2, ShieldCheck, Clock, AlertTriangle, Search, Handshake } from 'lucide-react';
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -30,15 +30,26 @@ function StatCard({ icon, label, value, color, sub, delay = 0 }: StatCardProps) 
 }
 
 interface BatchStatisticsProps {
-  stats: any;
+  stats?: {
+    totalBatches?: number;
+    activeBatches?: number;
+    releasedBatches?: number;
+    inProgressBatches?: number;
+    awaitingCarrierPickup?: number;
+    completedBatches?: number;
+    blockchainSynced?: number;
+    expiringSoon?: number;
+    failedQcBatches?: number;
+    pendingInspection?: number;
+  };
   isLoading: boolean;
 }
 
 export function BatchStatistics({ stats, isLoading }: BatchStatisticsProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 animate-pulse">
-        {[...Array(8)].map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-4 animate-pulse">
+        {[...Array(9)].map((_, i) => (
           <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl p-5 h-24 border border-slate-100 dark:border-slate-800" />
         ))}
       </div>
@@ -48,7 +59,7 @@ export function BatchStatistics({ stats, isLoading }: BatchStatisticsProps) {
   // Map backend stats to the UI requirements
   // stats contains: activeBatches, inProgressBatches, completedBatches, failedQcBatches, totalBatches
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-3">
       <StatCard
         icon={<Boxes className="w-5 h-5 text-indigo-600" />}
         label="Total"
@@ -59,59 +70,67 @@ export function BatchStatistics({ stats, isLoading }: BatchStatisticsProps) {
       />
       <StatCard
         icon={<PackagePlus className="w-5 h-5 text-emerald-600" />}
-        label="Active"
-        value={stats?.activeBatches || 0}
+        label="Được xuất bán"
+        value={stats?.releasedBatches || 0}
         color="bg-emerald-50"
-        sub="Đang kinh doanh"
+        sub="Đã phát hành, còn hạn"
         delay={0.1}
       />
       <StatCard
-        icon={<Truck className="w-5 h-5 text-blue-600" />}
-        label="Shipping"
-        value={stats?.inProgressBatches || 0}
-        color="bg-blue-50"
-        sub="Đang vận chuyển"
+        icon={<Handshake className="w-5 h-5 text-sky-600" />}
+        label="Chờ lấy hàng"
+        value={stats?.awaitingCarrierPickup || 0}
+        color="bg-sky-50"
+        sub="Đã bàn giao vận đơn"
         delay={0.15}
       />
       <StatCard
-        icon={<CheckCircle2 className="w-5 h-5 text-teal-600" />}
-        label="Delivered"
-        value={stats?.completedBatches || 0}
-        color="bg-teal-50"
-        sub="Đã giao thành công"
+        icon={<Truck className="w-5 h-5 text-blue-600" />}
+        label="Đang vận chuyển"
+        value={stats?.inProgressBatches || 0}
+        color="bg-blue-50"
+        sub="Đang vận chuyển"
         delay={0.2}
       />
       <StatCard
-        icon={<ShieldCheck className="w-5 h-5 text-purple-600" />}
-        label="Synced"
-        value={stats?.blockchainSynced || 0}
-        color="bg-purple-50"
-        sub="Blockchain verified"
+        icon={<CheckCircle2 className="w-5 h-5 text-teal-600" />}
+        label="Đã giao"
+        value={stats?.completedBatches || 0}
+        color="bg-teal-50"
+        sub="Lô có chuyến đã giao"
         delay={0.25}
       />
       <StatCard
-        icon={<Clock className="w-5 h-5 text-orange-500" />}
-        label="Expiring"
-        value={stats?.expiringSoon || 0}
-        color="bg-orange-50"
-        sub="Sắp hết hạn (<30d)"
+        icon={<ShieldCheck className="w-5 h-5 text-purple-600" />}
+        label="Đã xác nhận"
+        value={stats?.blockchainSynced || 0}
+        color="bg-purple-50"
+        sub="Blockchain verified"
         delay={0.3}
       />
       <StatCard
-        icon={<AlertTriangle className="w-5 h-5 text-red-500" />}
-        label="Failed"
-        value={stats?.failedQcBatches || 0}
-        color="bg-red-50"
-        sub="Lỗi chất lượng"
+        icon={<Clock className="w-5 h-5 text-orange-500" />}
+        label="Sắp hết hạn"
+        value={stats?.expiringSoon || 0}
+        color="bg-orange-50"
+        sub="Sắp hết hạn (<30d)"
         delay={0.35}
       />
       <StatCard
+        icon={<AlertTriangle className="w-5 h-5 text-red-500" />}
+        label="Không đạt QC"
+        value={stats?.failedQcBatches || 0}
+        color="bg-red-50"
+        sub="Lỗi chất lượng"
+        delay={0.4}
+      />
+      <StatCard
         icon={<Search className="w-5 h-5 text-slate-600" />}
-        label="Pending"
+        label="Chờ kiểm định"
         value={stats?.pendingInspection || 0}
         color="bg-slate-100"
         sub="Chờ kiểm định"
-        delay={0.4}
+        delay={0.45}
       />
     </div>
   );

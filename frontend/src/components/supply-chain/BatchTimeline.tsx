@@ -1,7 +1,8 @@
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, User, Clock, ArrowDown, ShieldCheck, ChevronDown, ChevronUp, Image as ImageIcon, FileText } from 'lucide-react';
-import { Badge } from '../ui/badge';
+import { MapPin, User, Clock, ShieldCheck, ChevronDown, ChevronUp, Image as ImageIcon, FileText } from 'lucide-react';
 import { Button } from '../ui/button';
 
 const STAGE_ICON_MAP: Record<string, string> = {
@@ -11,6 +12,7 @@ const STAGE_ICON_MAP: Record<string, string> = {
   PROCESSING: '🏭',
   PACKAGING: '📫',
   WAREHOUSE: '🏬',
+  HANDOVER_TO_CARRIER: '🤝',
   SHIPPING: '🚚',
   DISTRIBUTOR: '🏪',
   RETAIL: '🛒',
@@ -34,12 +36,31 @@ function calculateDuration(start: string, end: string) {
 }
 
 interface BatchTimelineProps {
-  journeys: any[];
-  isBlockchainSynced?: boolean;
+  journeys: Array<{
+    id: string;
+    createdAt: string;
+    eventTime?: string | null;
+    stage?: { name?: string; displayName?: string };
+    location?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    actorName?: string;
+    note?: string | null;
+    referenceCode?: string | null;
+    carrierName?: string | null;
+    recipientName?: string | null;
+    imageUrls?: string[];
+    attachmentUrls?: string[];
+    blockchainPayload?: { qualityStatus?: string | null } | null;
+    blockchainRecord?: {
+      status?: string;
+      transactionHash?: string | null;
+    } | null;
+  }>;
   onViewOnMap?: (stageId: string) => void;
 }
 
-export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: BatchTimelineProps) {
+export function BatchTimeline({ journeys, onViewOnMap }: BatchTimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (!journeys || journeys.length === 0) {
@@ -52,7 +73,11 @@ export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: Bat
   }
 
   // Ensure chronological order
-  const sortedJourneys = [...journeys].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const sortedJourneys = [...journeys].sort(
+    (a, b) =>
+      new Date(a.eventTime ?? a.createdAt).getTime() -
+      new Date(b.eventTime ?? b.createdAt).getTime(),
+  );
 
   // Progress Bar Header
   const renderProgressBar = () => {
@@ -92,7 +117,13 @@ export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: Bat
           const stageEmoji = STAGE_ICON_MAP[stageName] ?? '📍';
           const isCurrent = idx === sortedJourneys.length - 1;
           const isExpanded = expandedId === journey.id;
-          const duration = idx > 0 ? calculateDuration(sortedJourneys[idx - 1].createdAt, journey.createdAt) : null;
+          const duration =
+            idx > 0
+              ? calculateDuration(
+                  sortedJourneys[idx - 1].eventTime ?? sortedJourneys[idx - 1].createdAt,
+                  journey.eventTime ?? journey.createdAt,
+                )
+              : null;
           
           let cardStyle = "bg-white dark:bg-slate-900 border-slate-200";
           let iconStyle = "bg-emerald-50 text-emerald-600";
@@ -146,7 +177,7 @@ export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: Bat
                         {journey.stage?.displayName || stageName}
                       </h4>
                       <p className="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {formatDate(journey.createdAt)}
+                        <Clock className="w-3 h-3" /> {formatDate(journey.eventTime ?? journey.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -157,7 +188,7 @@ export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: Bat
                         <MapPin className="w-4 h-4 text-emerald-500 shrink-0" />
                         <span className="font-medium">{journey.location}</span>
                       </div>
-                      {isBlockchainSynced && (
+                      {journey.blockchainRecord?.status === 'CONFIRMED' && (
                         <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-100 w-fit px-2 py-0.5 rounded-md">
                           <ShieldCheck className="w-3 h-3" /> VERIFIED
                         </div>
@@ -196,36 +227,83 @@ export function BatchTimeline({ journeys, isBlockchainSynced, onViewOnMap }: Bat
                             </div>
                           )}
 
-                          {isBlockchainSynced && (
+                          {journey.blockchainRecord && (
                             <div>
-                              <span className="text-xs font-semibold text-slate-400 block mb-1 uppercase tracking-wider">Blockchain TxHash</span>
-                              <div className="text-xs font-mono text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md truncate max-w-xs">
-                                0x4d8f...a1b2
+                              <span className="text-xs font-semibold text-slate-400 block mb-1 uppercase tracking-wider">Blockchain</span>
+                              <div className="text-xs font-mono text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md break-all max-w-xs">
+                                {journey.blockchainRecord.status}
+                                {journey.blockchainRecord.transactionHash
+                                  ? ` · ${journey.blockchainRecord.transactionHash}`
+                                  : ''}
                               </div>
                             </div>
                           )}
                         </div>
 
                         <div className="space-y-4">
+                          {(journey.referenceCode || journey.carrierName || journey.recipientName) && (
+                            <div className="grid grid-cols-1 gap-2 rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs dark:border-blue-900 dark:bg-blue-950/20">
+                              {journey.referenceCode && (
+                                <p><span className="font-bold">Mã tham chiếu:</span> {journey.referenceCode}</p>
+                              )}
+                              {journey.carrierName && (
+                                <p><span className="font-bold">Đơn vị vận chuyển:</span> {journey.carrierName}</p>
+                              )}
+                              {journey.recipientName && (
+                                <p><span className="font-bold">Người nhận:</span> {journey.recipientName}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {journey.blockchainPayload?.qualityStatus && (
+                            <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-3 text-xs dark:border-violet-900 dark:bg-violet-950/20">
+                              <span className="font-bold">Kết quả kiểm định:</span>{' '}
+                              {journey.blockchainPayload.qualityStatus}
+                            </div>
+                          )}
+
                           {journey.note && (
                             <div>
                               <span className="text-xs font-semibold text-slate-400 block mb-1 uppercase tracking-wider">Ghi chú</span>
                               <div className="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200">
                                 <FileText className="w-4 h-4 text-slate-400 inline mr-2" />
-                                "{journey.note}"
+                                &ldquo;{journey.note}&rdquo;
                               </div>
                             </div>
                           )}
 
-                          {journey.imageUrls?.length > 0 && (
+                          {(journey.imageUrls?.length ?? 0) > 0 && (
                             <div>
                               <span className="text-xs font-semibold text-slate-400 block mb-2 uppercase tracking-wider flex items-center gap-1">
                                 <ImageIcon className="w-3 h-3" /> Hình ảnh đính kèm
                               </span>
                               <div className="flex gap-2 flex-wrap">
-                                {journey.imageUrls.map((url: string, i: number) => (
+                                {journey.imageUrls?.map((url: string, i: number) => (
                                   <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                    <img src={url} alt={`Ảnh ${i + 1}`} className="h-16 w-16 rounded-xl object-cover border border-slate-200 shadow-sm hover:scale-105 transition-transform" />
+                                    {/* URLs minh chứng đến từ nhiều kho lưu trữ ngoài không nằm trong Next image allowlist. */}
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <AssetImage src={url} alt={`Ảnh ${i + 1}`} className="h-16 w-16 rounded-xl object-cover border border-slate-200 shadow-sm hover:scale-105 transition-transform" />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {(journey.attachmentUrls?.length ?? 0) > 0 && (
+                            <div>
+                              <span className="text-xs font-semibold text-slate-400 block mb-2 uppercase tracking-wider flex items-center gap-1">
+                                <FileText className="w-3 h-3" /> Tài liệu minh chứng
+                              </span>
+                              <div className="flex flex-col gap-1">
+                                {journey.attachmentUrls?.map((url: string, index: number) => (
+                                  <a
+                                    key={`${url}-${index}`}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="truncate text-xs font-medium text-blue-600 hover:underline"
+                                  >
+                                    Minh chứng {index + 1}: {url}
                                   </a>
                                 ))}
                               </div>

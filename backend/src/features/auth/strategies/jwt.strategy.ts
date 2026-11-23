@@ -27,7 +27,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const isBlacklisted = await this.redisService.get(`auth:blacklist:${token}`);
+      const isBlacklisted = await this.redisService.get(
+        `auth:blacklist:${token}`,
+      );
       if (isBlacklisted) {
         throw new UnauthorizedException('Token đã bị vô hiệu hóa');
       }
@@ -35,7 +37,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     const user = await this.authRepository.findById(payload.sub);
     if (!user) {
-      throw new UnauthorizedException('Người dùng không tồn tại hoặc đã bị xóa');
+      throw new UnauthorizedException(
+        'Người dùng không tồn tại hoặc đã bị xóa',
+      );
     }
     if (!user.isActive) {
       throw new UnauthorizedException('Tài khoản đã bị khóa');
@@ -47,6 +51,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       phone: user.phone,
       role: user.role.name,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       createdAt: user.createdAt,
     };
   }

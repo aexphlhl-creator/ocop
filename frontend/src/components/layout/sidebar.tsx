@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '../../stores/auth.store';
@@ -8,33 +8,37 @@ import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, ShoppingBag, Store, Newspaper, Map, User, LogOut,
   ChevronLeft, ChevronRight, MessageSquare, Ticket, Warehouse, GitBranch, ScrollText, Blocks,
-  Briefcase, CalendarRange, BellRing
+  CalendarRange, BellRing, Truck, Route
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+const subscribeToHydration = () => () => undefined;
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => setMounted(true), []);
 
   if (!mounted || !user) return null;
 
   const adminMenu = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Sản phẩm OCOP', href: '/dashboard/products', icon: ShoppingBag },
-    { name: 'Nâng hạng sao OCOP', href: '/dashboard/upgrades', icon: Ticket },
     { name: 'Đơn hàng', href: '/dashboard/orders', icon: ShoppingBag },
-    { name: 'Mua sắm (ERP)', href: '/dashboard/procurement', icon: Briefcase },
     { name: 'Quản lý Kho', href: '/dashboard/inventory', icon: Warehouse },
     { name: 'Chuỗi cung ứng', href: '/dashboard/supply-chain', icon: GitBranch },
+    { name: 'Quản lý chuyến hàng', href: '/dashboard/shipments', icon: Route },
+    { name: 'Hãng vận chuyển', href: '/dashboard/logistics', icon: Truck },
     { name: 'Chứng nhận', href: '/dashboard/certificates', icon: ScrollText },
     { name: 'Blockchain', href: '/dashboard/blockchain', icon: Blocks },
     { name: 'Mã giảm giá', href: '/dashboard/vouchers', icon: Ticket },
     { name: 'Đánh giá', href: '/dashboard/reviews', icon: MessageSquare },
-    { name: 'Chủ thể sản xuất', href: '/dashboard/businesses', icon: Store },
+    { name: 'Người bán', href: '/dashboard/sellers', icon: Store },
     { name: 'Tin tức', href: '/dashboard/news', icon: Newspaper },
     { name: 'Sự kiện & Hội chợ', href: '/dashboard/events', icon: CalendarRange },
     { name: 'Chiến dịch Thông báo', href: '/dashboard/notifications', icon: BellRing },
@@ -45,14 +49,14 @@ export default function Sidebar() {
   const sellerMenu = [
     { name: 'Cửa hàng của tôi', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Sản phẩm của tôi', href: '/dashboard/products', icon: ShoppingBag },
-    { name: 'Nâng hạng sao OCOP', href: '/dashboard/upgrades', icon: Ticket },
     { name: 'Quản lý đơn hàng', href: '/dashboard/orders', icon: ShoppingBag },
-    { name: 'Mua sắm (ERP)', href: '/dashboard/procurement', icon: Briefcase },
     { name: 'Quản lý Kho', href: '/dashboard/inventory', icon: Warehouse },
     { name: 'Chuỗi cung ứng', href: '/dashboard/supply-chain', icon: GitBranch },
+    { name: 'Chuyến hàng', href: '/dashboard/shipments', icon: Route },
     { name: 'Chứng nhận', href: '/dashboard/certificates', icon: ScrollText },
     { name: 'Mã giảm giá', href: '/dashboard/vouchers', icon: Ticket },
-    { name: 'Chủ thể liên kết', href: '/dashboard/businesses', icon: Store },
+    { name: 'Sự kiện & Hội chợ', href: '/dashboard/events', icon: CalendarRange },
+    { name: 'Hồ sơ gian hàng', href: '/dashboard/sellers', icon: Store },
     { name: 'Tài khoản', href: '/dashboard/profile', icon: User },
     { name: 'Xem Bản đồ', href: '/map', icon: Map },
   ];
@@ -70,9 +74,21 @@ export default function Sidebar() {
     { name: 'Tài khoản', href: '/dashboard/profile', icon: User },
   ];
 
+  const warehouseManagerMenu = [
+    { name: 'Quản lý Kho', href: '/dashboard/inventory', icon: Warehouse },
+    { name: 'Bàn giao vận chuyển', href: '/dashboard/shipments', icon: Route },
+    { name: 'Truy xuất lô hàng', href: '/dashboard/supply-chain', icon: GitBranch },
+    { name: 'Tài khoản', href: '/dashboard/profile', icon: User },
+  ];
+
   let menuItems = customerMenu;
   if (user.role === 'ADMIN') menuItems = adminMenu;
   else if (user.role === 'SELLER') menuItems = sellerMenu;
+  else if (user.role === 'WAREHOUSE_MANAGER') menuItems = warehouseManagerMenu;
+  else if (user.role === 'QUALITY_ASSURANCE') menuItems = [
+    { name: 'Kiểm định & phát hành lô', href: '/dashboard/supply-chain', icon: GitBranch },
+    { name: 'Tài khoản', href: '/dashboard/profile', icon: User },
+  ];
   else if (user.role === 'EVENT_COORDINATOR') menuItems = eventCoordinatorMenu;
 
   return (

@@ -1,6 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
+
+const orderShipmentInclude = Prisma.validator<Prisma.ShipmentInclude>()({
+  carrierOrganization: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      providerCode: true,
+      trackingUrlTemplate: true,
+    },
+  },
+  events: {
+    orderBy: [{ eventTime: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      eventType: true,
+      source: true,
+      fromStatus: true,
+      toStatus: true,
+      eventTime: true,
+      location: true,
+      recipientName: true,
+      failureReason: true,
+      note: true,
+      imageUrls: true,
+      attachmentUrls: true,
+      createdAt: true,
+    },
+  },
+});
 
 @Injectable()
 export class OrdersRepository {
@@ -17,19 +47,20 @@ export class OrdersRepository {
                 id: true,
                 name: true,
                 images: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
-        business: {
-          select: {
-            id: true,
-            name: true,
-          }
+        seller: {
+          select: { id: true, fullName: true, sellerProfile: true },
         },
         tracking: {
-          orderBy: { createdAt: 'asc' }
-        }
+          orderBy: { createdAt: 'asc' },
+        },
+        shipments: {
+          include: orderShipmentInclude,
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
@@ -45,21 +76,25 @@ export class OrdersRepository {
                 id: true,
                 name: true,
                 images: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
-        business: true,
+        seller: { include: { sellerProfile: true } },
         user: {
           select: {
             id: true,
             fullName: true,
             email: true,
-          }
+          },
         },
         tracking: {
-          orderBy: { createdAt: 'asc' }
-        }
+          orderBy: { createdAt: 'asc' },
+        },
+        shipments: {
+          include: orderShipmentInclude,
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
@@ -76,30 +111,25 @@ export class OrdersRepository {
                 id: true,
                 name: true,
                 images: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
-        business: {
-          select: {
-            id: true,
-            name: true,
-          }
-        },
+        seller: { include: { sellerProfile: true } },
         tracking: {
-          orderBy: { createdAt: 'asc' }
-        }
+          orderBy: { createdAt: 'asc' },
+        },
+        shipments: {
+          include: orderShipmentInclude,
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
 
   async findBySellerId(sellerId: string) {
     return this.prisma.order.findMany({
-      where: {
-        business: {
-          userId: sellerId,
-        }
-      },
+      where: { sellerId },
       orderBy: { createdAt: 'desc' },
       include: {
         items: {
@@ -109,20 +139,25 @@ export class OrdersRepository {
                 id: true,
                 name: true,
                 images: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         user: {
           select: {
             id: true,
             fullName: true,
             email: true,
-          }
+          },
         },
+        seller: { include: { sellerProfile: true } },
         tracking: {
-          orderBy: { createdAt: 'asc' }
-        }
+          orderBy: { createdAt: 'asc' },
+        },
+        shipments: {
+          include: orderShipmentInclude,
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
   }
@@ -130,24 +165,28 @@ export class OrdersRepository {
   async updateStatus(id: string, status: OrderStatus, description?: string) {
     return this.prisma.order.update({
       where: { id },
-      data: { 
+      data: {
         status,
         tracking: {
           create: {
             status,
             description,
-          }
-        }
+          },
+        },
       },
     });
   }
 
-  async updatePaymentStatus(id: string, paymentStatus: PaymentStatus, vnpayTxnRef?: string) {
+  async updatePaymentStatus(
+    id: string,
+    paymentStatus: PaymentStatus,
+    vnpayTxnRef?: string,
+  ) {
     return this.prisma.order.update({
       where: { id },
-      data: { 
+      data: {
         paymentStatus,
-        ...(vnpayTxnRef && { vnpayTxnRef })
+        ...(vnpayTxnRef && { vnpayTxnRef }),
       },
     });
   }

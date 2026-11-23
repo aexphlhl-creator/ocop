@@ -6,14 +6,14 @@ export class StatisticsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async getOverview() {
-    const [products, businesses, categories, provinces] = await Promise.all([
+    const [products, sellers, categories, provinces] = await Promise.all([
       this.prisma.product.count({ where: { deletedAt: null } }),
-      this.prisma.business.count({ where: { deletedAt: null } }),
+      this.prisma.sellerProfile.count(),
       this.prisma.category.count(),
       this.prisma.province.count(),
     ]);
 
-    return { products, businesses, categories, provinces };
+    return { products, sellers, categories, provinces };
   }
 
   async getProductsByProvince() {
@@ -97,18 +97,14 @@ export class StatisticsRepository {
     }));
   }
 
-  async getBusinessesByProvince() {
+  async getSellersByProvince() {
     const provinces = await this.prisma.province.findMany({
       select: {
         id: true,
         name: true,
         _count: {
           select: {
-            businesses: {
-              where: {
-                deletedAt: null,
-              },
-            },
+            sellerProfiles: true,
           },
         },
       },
@@ -120,7 +116,7 @@ export class StatisticsRepository {
     return provinces.map((p) => ({
       provinceId: p.id,
       provinceName: p.name,
-      count: p._count.businesses,
+      count: p._count.sellerProfiles,
     }));
   }
 
@@ -148,9 +144,7 @@ export class StatisticsRepository {
         year,
         month,
         product: {
-          business: {
-            userId: sellerId,
-          },
+          sellerId,
           deletedAt: null,
         },
       },
@@ -163,22 +157,15 @@ export class StatisticsRepository {
   }
 
   // Analytics Dashboard Methods
-  
-  async getRevenueByDay(startDate: Date, endDate: Date, businessId?: string, isSellerUser?: boolean) {
-    let actualBusinessId = businessId;
-    if (isSellerUser && businessId) {
-      const b = await this.prisma.business.findFirst({ where: { userId: businessId } });
-      if (b) actualBusinessId = b.id;
-      else return []; // Không có cửa hàng
-    }
 
+  async getRevenueByDay(startDate: Date, endDate: Date, sellerId?: string) {
     const orders = await this.prisma.order.findMany({
       where: {
         createdAt: {
           gte: startDate,
           lte: endDate,
         },
-        businessId: actualBusinessId || undefined,
+        sellerId: sellerId || undefined,
         status: 'DELIVERED', // Chỉ tính doanh thu khi giao hàng thành công
       },
       select: {
@@ -187,23 +174,16 @@ export class StatisticsRepository {
       },
       orderBy: {
         createdAt: 'asc',
-      }
+      },
     });
     return orders;
   }
 
-  async getOrdersByStatus(businessId?: string, isSellerUser?: boolean) {
-    let actualBusinessId = businessId;
-    if (isSellerUser && businessId) {
-      const b = await this.prisma.business.findFirst({ where: { userId: businessId } });
-      if (b) actualBusinessId = b.id;
-      else return [];
-    }
-
+  async getOrdersByStatus(sellerId?: string) {
     const statuses = await this.prisma.order.groupBy({
       by: ['status'],
       where: {
-        businessId: actualBusinessId || undefined,
+        sellerId: sellerId || undefined,
       },
       _count: {
         id: true,
@@ -212,21 +192,14 @@ export class StatisticsRepository {
     return statuses;
   }
 
-  async getTopProducts(limit: number, businessId?: string, isSellerUser?: boolean) {
-    let actualBusinessId = businessId;
-    if (isSellerUser && businessId) {
-      const b = await this.prisma.business.findFirst({ where: { userId: businessId } });
-      if (b) actualBusinessId = b.id;
-      else return [];
-    }
-
+  async getTopProducts(limit: number, sellerId?: string) {
     // Lấy danh sách OrderItem đã bán
     const topItems = await this.prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
         order: {
           status: 'DELIVERED',
-          businessId: actualBusinessId || undefined,
+          sellerId: sellerId || undefined,
         },
       },
       _sum: {
@@ -243,10 +216,10 @@ export class StatisticsRepository {
     if (topItems.length === 0) return [];
 
     // Lấy thông tin chi tiết sản phẩm
-    const productIds = topItems.map(item => item.productId);
+    const productIds = topItems.map((item) => item.productId);
     const products = await this.prisma.product.findMany({
       where: {
-        id: { in: productIds }
+        id: { in: productIds },
       },
       select: {
         id: true,
@@ -254,14 +227,14 @@ export class StatisticsRepository {
         price: true,
         images: {
           take: 1,
-          select: { imageUrl: true }
-        }
-      }
+          select: { imageUrl: true },
+        },
+      },
     });
 
     // Map kết quả
-    return topItems.map(item => {
-      const product = products.find(p => p.id === item.productId);
+    return topItems.map((item) => {
+      const product = products.find((p) => p.id === item.productId);
       return {
         id: item.productId,
         name: product?.name || 'Sản phẩm đã xóa',
@@ -270,5 +243,61 @@ export class StatisticsRepository {
         totalSold: item._sum.quantity || 0,
       };
     });
+  }
+
+  async getExportReportData() {
+    const [provinces, sellers, products] = await Promise.all([
+      this.prisma.province.findMany({
+        include: {
+          wards: {
+            select: { id: true, name: true },
+          },
+          _count: {
+            select: {
+              sellerProfiles: true,
+              products: { where: { deletedAt: null } },
+            },
+          },
+          products: {
+            where: { deletedAt: null },
+            select: {
+              ocopLevel: {
+                select: { level: true },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.sellerProfile.findMany({
+        include: {
+          seller: {
+            select: { fullName: true, email: true, phone: true },
+          },
+          ward: { select: { name: true } },
+          province: { select: { name: true } },
+        },
+        orderBy: { displayName: 'asc' },
+      }),
+      this.prisma.product.findMany({
+        where: { deletedAt: null },
+        include: {
+          ocopLevel: true,
+          category: true,
+          seller: { select: { fullName: true } },
+          business: { select: { name: true } },
+          ward: { select: { name: true } },
+          province: { select: { name: true } },
+          blockchainRecords: {
+            select: { transactionHash: true, hash: true, status: true },
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return { provinces, sellers, products };
   }
 }

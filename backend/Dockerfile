@@ -18,8 +18,8 @@ RUN npm run build
 # --- Stage 2: Production ---
 FROM node:22-alpine AS production
 
-# Install tini for proper signal handling
-RUN apk add --no-cache tini curl
+# Install tini, curl, and postgresql16-client for database backups and restores
+RUN apk add --no-cache tini curl postgresql16-client
 RUN npm install -g npm@11
 
 WORKDIR /usr/src/app
@@ -35,9 +35,15 @@ RUN npx prisma generate
 # Copy built assets from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
-# ★ THÊM MỚI: copy entrypoint script và cấp quyền thực thi (phải làm khi còn là root)
+# Copy administrative and backup automation scripts
+COPY scripts ./scripts
+
+# Copy entrypoint script and grant execution permissions
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
+
+# Create backups volume directory with node user ownership for PVC mounts
+RUN mkdir -p /backups && chown -R node:node /backups /usr/src/app
 
 # Use non-root user
 USER node

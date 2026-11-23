@@ -7,7 +7,15 @@ export interface User {
   email: string;
   fullName: string;
   phone?: string;
-  role: 'ADMIN' | 'SELLER' | 'VISITOR' | 'EVENT_COORDINATOR';
+  mustChangePassword?: boolean;
+  role:
+    | 'ADMIN'
+    | 'SELLER'
+    | 'WAREHOUSE_MANAGER'
+    | 'QUALITY_ASSURANCE'
+    | 'LOGISTICS'
+    | 'VISITOR'
+    | 'EVENT_COORDINATOR';
 }
 
 interface AuthState {

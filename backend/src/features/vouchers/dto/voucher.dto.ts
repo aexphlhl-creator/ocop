@@ -1,7 +1,21 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsEnum, IsBoolean, IsDateString, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsDateString,
+  Min,
+  IsUUID,
+} from 'class-validator';
 import { DiscountType } from '@prisma/client';
 
 export class CreateVoucherDto {
+  @IsUUID('4')
+  @IsOptional()
+  sellerId?: string;
+
   @IsString()
   @IsNotEmpty()
   code: string;
@@ -43,7 +57,7 @@ export class ApplyVoucherDto {
 
   @IsString()
   @IsNotEmpty()
-  businessId: string;
+  sellerId: string;
 
   @IsNumber()
   @Min(0)

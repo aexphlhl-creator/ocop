@@ -1,5 +1,7 @@
 'use client';
 
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../../services/api';
@@ -9,6 +11,11 @@ import { EmptyState } from '../../../../components/ui/empty-state';
 import { MessageSquare, Trash2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface Review {
+  id: string; rating: number; comment: string; createdAt: string;
+  user?: { fullName: string; email: string };
+  product?: { name: string; images?: Array<{ imageUrl: string }> };
+}
 export default function AdminReviewsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -16,7 +23,7 @@ export default function AdminReviewsPage() {
   const { data: reviews = [], isLoading } = useQuery({
     queryKey: ['admin-reviews'],
     queryFn: async () => {
-      const res = await api.get('/api/v1/reviews/all');
+      const res = await api.get<{ data: Review[] }>('/api/v1/reviews/all');
       return res.data.data;
     },
     enabled: !!user && user.role === 'ADMIN',
@@ -72,7 +79,7 @@ export default function AdminReviewsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {reviews.map((review: any) => (
+                {reviews.map((review) => (
                   <tr key={review.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="py-4">
                       <div className="flex flex-col">
@@ -84,7 +91,7 @@ export default function AdminReviewsPage() {
                       <div className="flex items-center gap-2">
                         {review.product?.images?.[0] && (
                           <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
-                            <img src={review.product.images[0].imageUrl} alt="Product" className="w-full h-full object-cover" />
+                            <AssetImage src={review.product.images[0].imageUrl} alt="Product" className="w-full h-full object-cover" />
                           </div>
                         )}
                         <span className="font-medium text-slate-700 dark:text-slate-300 line-clamp-2 max-w-[200px]">

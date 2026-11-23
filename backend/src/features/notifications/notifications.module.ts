@@ -32,10 +32,10 @@ import { CampaignTask } from './notification-campaigns/tasks/campaign.task';
   ],
   controllers: [NotificationsController, NotificationCampaignsController],
   providers: [
-    NotificationsService, 
+    NotificationsService,
     NotificationCampaignsService,
     NotificationDispatcherService,
-    CampaignTask
+    CampaignTask,
   ],
   exports: [NotificationsService],
 })

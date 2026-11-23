@@ -1,28 +1,17 @@
 import React from 'react';
-import { MoreHorizontal, Eye, Route, QrCode, ShieldCheck, Download, MapPin } from 'lucide-react';
+import { Eye, Route, QrCode, ShieldCheck, MapPin } from 'lucide-react';
+import type { BatchSummary } from '@/types/supply-chain';
 import { Button } from '../ui/button';
+import { lotStatusLabel } from './lot-status';
 
 interface BatchTableProps {
-  batches: any[];
+  batches: BatchSummary[];
   onSelect: (batchId: string, tab?: 'overview' | 'timeline' | 'map' | 'blockchain') => void;
-  onShowQR: (batch: any) => void;
+  onShowQR: (batch: BatchSummary) => void;
 }
 
 export function BatchTable({ batches, onSelect, onShowQR }: BatchTableProps) {
-  const getStatusBadge = (status: string, qty: number) => {
-    if (qty === 0 || status === 'DEPLETED') {
-      return <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700">⚫ Đã bán hết</span>;
-    }
-    if (status === 'ACTIVE') {
-      return <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-700">🟢 Đang bán</span>;
-    }
-    if (status === 'REJECTED') {
-      return <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700">🔴 Lỗi QC</span>;
-    }
-    return <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700">⚫ {status}</span>;
-  };
-
-  const getStageBadge = (journeys: any[]) => {
+  const getStageBadge = (journeys: NonNullable<BatchSummary['journeys']>) => {
     if (!journeys || journeys.length === 0) return <span className="text-slate-400 italic text-xs">Chưa có hành trình</span>;
     const last = journeys[journeys.length - 1];
     return (
@@ -41,7 +30,7 @@ export function BatchTable({ batches, onSelect, onShowQR }: BatchTableProps) {
             <tr>
               <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Batch Code</th>
               <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Sản phẩm</th>
-              <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider hidden md:table-cell">Doanh nghiệp</th>
+              <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider hidden md:table-cell">Người bán</th>
               <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Trạng thái</th>
               <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider hidden lg:table-cell">Công đoạn HT</th>
               <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Tồn kho</th>
@@ -71,11 +60,11 @@ export function BatchTable({ batches, onSelect, onShowQR }: BatchTableProps) {
                   </td>
                   <td className="px-5 py-3 hidden md:table-cell">
                     <div className="text-slate-500 text-xs line-clamp-1">
-                      {batch.inventory?.product?.business?.name || '---'}
+                      {batch.inventory?.product?.seller?.sellerProfile?.displayName ?? batch.inventory?.product?.seller?.fullName ?? '---'}
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    {getStatusBadge(batch.status, batch.quantity)}
+                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{lotStatusLabel(batch)}</span>
                   </td>
                   <td className="px-5 py-3 hidden lg:table-cell">
                     {getStageBadge(batch.journeys || [])}

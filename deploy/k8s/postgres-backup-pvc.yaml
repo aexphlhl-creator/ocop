@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ocop-backup-pvc
+  namespace: ocop-production
+  labels:
+    app.kubernetes.io/name: ocop-backup-storage
+    app.kubernetes.io/part-of: ocop-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard-rwo

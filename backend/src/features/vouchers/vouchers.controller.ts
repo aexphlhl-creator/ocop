@@ -1,5 +1,21 @@
-import { Controller, Post, Get, Body, UseGuards, HttpCode } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Patch,
+  Param,
+  Body,
+  UseGuards,
+  HttpCode,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto, ApplyVoucherDto } from './dto/voucher.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,7 +36,10 @@ export class VouchersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Tạo mã giảm giá' })
   @ApiResponse({ status: 201, description: 'Tạo thành công' })
-  async create(@Body() dto: CreateVoucherDto, @CurrentUser() user: RequestUser) {
+  async create(
+    @Body() dto: CreateVoucherDto,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.vouchersService.create(dto, user);
   }
 
@@ -38,5 +57,31 @@ export class VouchersController {
   @ApiOperation({ summary: 'Kiểm tra và tính toán mã giảm giá' })
   async apply(@Body() dto: ApplyVoucherDto) {
     return this.vouchersService.apply(dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMIN, RoleName.SELLER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Xóa mã giảm giá' })
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.vouchersService.delete(id, user);
+  }
+
+  @Patch(':id/toggle')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMIN, RoleName.SELLER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Bật hoặc tắt trạng thái hoạt động của mã giảm giá',
+  })
+  async toggleStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.vouchersService.toggleStatus(id, user);
   }
 }

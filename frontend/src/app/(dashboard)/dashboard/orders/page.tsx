@@ -1,64 +1,194 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { api } from '../../../../services/api';
-import { useAuthStore } from '../../../../stores/auth.store';
-import { LoadingSpinner } from '../../../../components/ui/loading-spinner';
-import { Badge } from '../../../../components/ui/badge';
-import { Modal } from '../../../../components/ui/modal';
-import { Input } from '../../../../components/ui/input';
-import { Button } from '../../../../components/ui/button';
-import { toast } from 'sonner';
+import { AssetImage } from '@/components/ui/asset-image';
+
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { api } from "../../../../services/api";
+import { useAuthStore } from "../../../../stores/auth.store";
+import { LoadingSpinner } from "../../../../components/ui/loading-spinner";
+import { Modal } from "../../../../components/ui/modal";
+import { Input } from "../../../../components/ui/input";
+import { Button } from "../../../../components/ui/button";
+import { toast } from "sonner";
 import {
-  Package, ShoppingCart, Truck, CheckCircle2, XCircle,
-  RotateCcw, Clock, DollarSign, Filter, X, ChevronLeft,
-  ChevronRight, Eye, RefreshCw, AlertCircle, User,
-  MapPin, CalendarDays, CreditCard, Boxes, ArrowRight,
-  TrendingUp, PackageOpen,
-} from 'lucide-react';
+  Package,
+  ShoppingCart,
+  Truck,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Clock,
+  Filter,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  RefreshCw,
+  User,
+  MapPin,
+  Boxes,
+  TrendingUp,
+  PackageOpen,
+} from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PACKING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'RETURNED';
-type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
+type OrderStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "PACKING"
+  | "PROCESSING"
+  | "SHIPPED"
+  | "DELIVERED"
+  | "CANCELLED"
+  | "RETURNED";
+type PaymentStatus = "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED";
 
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  PENDING:    { label: 'Chờ xác nhận', color: 'text-amber-700 bg-amber-50 border-amber-200',    icon: <Clock className="w-3 h-3" /> },
-  CONFIRMED:  { label: 'Đã xác nhận',  color: 'text-blue-700 bg-blue-50 border-blue-200',       icon: <CheckCircle2 className="w-3 h-3" /> },
-  PACKING:    { label: 'Đang đóng gói',color: 'text-indigo-700 bg-indigo-50 border-indigo-200', icon: <PackageOpen className="w-3 h-3" /> },
-  PROCESSING: { label: 'Đang xử lý',   color: 'text-violet-700 bg-violet-50 border-violet-200', icon: <RefreshCw className="w-3 h-3" /> },
-  SHIPPED:    { label: 'Đang giao',    color: 'text-cyan-700 bg-cyan-50 border-cyan-200',       icon: <Truck className="w-3 h-3" /> },
-  DELIVERED:  { label: 'Đã giao',      color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" /> },
-  CANCELLED:  { label: 'Đã hủy',       color: 'text-red-700 bg-red-50 border-red-200',          icon: <XCircle className="w-3 h-3" /> },
-  RETURNED:   { label: 'Hoàn trả',     color: 'text-slate-700 bg-slate-100 border-slate-300',   icon: <RotateCcw className="w-3 h-3" /> },
+interface DashboardOrderItem {
+  id: string;
+  quantity: number;
+  price: string | number;
+  reservedBatch?: {
+    batchNumber?: string | null;
+  } | null;
+  product?: {
+    name?: string;
+    images?: Array<{ imageUrl?: string | null }>;
+  };
+}
+
+interface DashboardOrderTracking {
+  id: string;
+  status: OrderStatus;
+  description?: string | null;
+  createdAt: string;
+}
+
+interface DashboardOrder {
+  id: string;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod?: string;
+  totalAmount: string | number;
+  shippingAddress: string;
+  phone?: string | null;
+  note?: string | null;
+  createdAt: string;
+  user?: { fullName?: string | null; email?: string | null };
+  seller?: {
+    fullName?: string | null;
+    sellerProfile?: { displayName?: string | null } | null;
+  };
+  items?: DashboardOrderItem[];
+  tracking?: DashboardOrderTracking[];
+}
+
+interface DashboardUser {
+  role?: string | null;
+}
+
+const STATUS_CONFIG: Record<
+  OrderStatus,
+  { label: string; color: string; icon: React.ReactNode }
+> = {
+  PENDING: {
+    label: "Chờ xác nhận",
+    color: "text-amber-700 bg-amber-50 border-amber-200",
+    icon: <Clock className="w-3 h-3" />,
+  },
+  CONFIRMED: {
+    label: "Đã xác nhận",
+    color: "text-blue-700 bg-blue-50 border-blue-200",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
+  PACKING: {
+    label: "Đang đóng gói",
+    color: "text-indigo-700 bg-indigo-50 border-indigo-200",
+    icon: <PackageOpen className="w-3 h-3" />,
+  },
+  PROCESSING: {
+    label: "Đang xử lý",
+    color: "text-violet-700 bg-violet-50 border-violet-200",
+    icon: <RefreshCw className="w-3 h-3" />,
+  },
+  SHIPPED: {
+    label: "Đang giao",
+    color: "text-cyan-700 bg-cyan-50 border-cyan-200",
+    icon: <Truck className="w-3 h-3" />,
+  },
+  DELIVERED: {
+    label: "Đã giao",
+    color: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    icon: <CheckCircle2 className="w-3 h-3" />,
+  },
+  CANCELLED: {
+    label: "Đã hủy",
+    color: "text-red-700 bg-red-50 border-red-200",
+    icon: <XCircle className="w-3 h-3" />,
+  },
+  RETURNED: {
+    label: "Hoàn trả",
+    color: "text-slate-700 bg-slate-100 border-slate-300",
+    icon: <RotateCcw className="w-3 h-3" />,
+  },
 };
 
-const PAYMENT_CONFIG: Record<PaymentStatus, { label: string; color: string }> = {
-  PENDING:   { label: 'Chưa thanh toán', color: 'text-amber-700 bg-amber-50' },
-  COMPLETED: { label: 'Đã thanh toán',   color: 'text-emerald-700 bg-emerald-50' },
-  FAILED:    { label: 'Thất bại',        color: 'text-red-700 bg-red-50' },
-  REFUNDED:  { label: 'Đã hoàn tiền',    color: 'text-slate-700 bg-slate-100' },
-};
+const PAYMENT_CONFIG: Record<PaymentStatus, { label: string; color: string }> =
+  {
+    PENDING: { label: "Chưa thanh toán", color: "text-amber-700 bg-amber-50" },
+    COMPLETED: {
+      label: "Đã thanh toán",
+      color: "text-emerald-700 bg-emerald-50",
+    },
+    FAILED: { label: "Thất bại", color: "text-red-700 bg-red-50" },
+    REFUNDED: { label: "Đã hoàn tiền", color: "text-slate-700 bg-slate-100" },
+  };
 
 // Status transition map for sellers
-const SELLER_TRANSITIONS: Partial<Record<OrderStatus, { value: OrderStatus; label: string }[]>> = {
-  PENDING:   [{ value: 'CONFIRMED', label: '✅ Xác nhận đơn' }, { value: 'CANCELLED', label: '❌ Hủy đơn' }],
-  CONFIRMED: [{ value: 'PACKING', label: '📦 Bắt đầu đóng gói' }, { value: 'CANCELLED', label: '❌ Hủy đơn' }],
-  PACKING:   [{ value: 'SHIPPED', label: '🚚 Giao cho vận chuyển' }, { value: 'CANCELLED', label: '❌ Hủy đơn' }],
-  PROCESSING:[{ value: 'SHIPPED', label: '🚚 Giao cho vận chuyển' }, { value: 'CANCELLED', label: '❌ Hủy đơn' }],
-  SHIPPED:   [{ value: 'DELIVERED', label: '✅ Xác nhận đã giao' }, { value: 'RETURNED', label: '↩️ Hoàn trả' }],
+const SELLER_TRANSITIONS: Partial<
+  Record<OrderStatus, { value: OrderStatus; label: string }[]>
+> = {
+  PENDING: [
+    { value: "CONFIRMED", label: "✅ Xác nhận đơn" },
+    { value: "CANCELLED", label: "❌ Hủy đơn" },
+  ],
+  CONFIRMED: [
+    { value: "PACKING", label: "📦 Bắt đầu đóng gói" },
+    { value: "CANCELLED", label: "❌ Hủy đơn" },
+  ],
+  PACKING: [{ value: "CANCELLED", label: "❌ Hủy đơn" }],
+  PROCESSING: [{ value: "CANCELLED", label: "❌ Hủy đơn" }],
+  SHIPPED: [], // Transport outcomes are recorded by carrier webhooks through Shipment.
 };
 
 function formatMoney(amount: number) {
-  return amount.toLocaleString('vi-VN') + 'đ';
+  return amount.toLocaleString("vi-VN") + "đ";
 }
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, sub, color }: any) {
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  sub?: string;
+  color: string;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -67,8 +197,12 @@ function StatCard({ icon, label, value, sub, color }: any) {
     >
       <div className={`p-3 rounded-xl ${color}`}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest truncate">{label}</p>
-        <p className="text-2xl font-black text-slate-900 dark:text-white leading-none mt-0.5">{value ?? '–'}</p>
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest truncate">
+          {label}
+        </p>
+        <p className="text-2xl font-black text-slate-900 dark:text-white leading-none mt-0.5">
+          {value ?? "–"}
+        </p>
         {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
       </div>
     </motion.div>
@@ -77,9 +211,15 @@ function StatCard({ icon, label, value, sub, color }: any) {
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status as OrderStatus] ?? { label: status, color: 'text-slate-700 bg-slate-100 border-slate-200', icon: null };
+  const cfg = STATUS_CONFIG[status as OrderStatus] ?? {
+    label: status,
+    color: "text-slate-700 bg-slate-100 border-slate-200",
+    icon: null,
+  };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.color}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.color}`}
+    >
       {cfg.icon} {cfg.label}
     </span>
   );
@@ -92,36 +232,43 @@ function OrderDetailModal({
   user,
   onStatusUpdated,
 }: {
-  order: any;
+  order: DashboardOrder;
   onClose: () => void;
-  user: any;
+  user: DashboardUser | null;
   onStatusUpdated: () => void;
 }) {
-  const [newStatus, setNewStatus] = useState('');
-  const [description, setDescription] = useState('');
-  const [trackingCode, setTrackingCode] = useState('');
-  const [shippingPartner, setShippingPartner] = useState('GHTK');
+  const [newStatus, setNewStatus] = useState("");
+  const [description, setDescription] = useState("");
 
   const transitions = SELLER_TRANSITIONS[order.status as OrderStatus] ?? [];
-  const canUpdate = ['ADMIN', 'SELLER'].includes(user?.role) && transitions.length > 0;
+  const canUpdate =
+    !!user?.role && ["ADMIN", "SELLER"].includes(user.role) && transitions.length > 0;
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload: any = { status: newStatus, description };
-      if (newStatus === 'SHIPPED' && trackingCode) {
-        payload.trackingCode = trackingCode;
-        payload.shippingPartner = shippingPartner;
-      }
+      const payload = { status: newStatus, description };
       const res = await api.patch(`/api/v1/orders/${order.id}/status`, payload);
       return res.data.data;
     },
     onSuccess: () => {
-      toast.success('Cập nhật trạng thái thành công!');
+      toast.success("Cập nhật trạng thái thành công!");
       onStatusUpdated();
       onClose();
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Có lỗi xảy ra');
+    onError: (err: unknown) => {
+      const message =
+        typeof err === "object" &&
+        err !== null &&
+        "response" in err &&
+        typeof err.response === "object" &&
+        err.response !== null &&
+        "data" in err.response &&
+        typeof err.response.data === "object" &&
+        err.response.data !== null &&
+        "message" in err.response.data
+          ? String(err.response.data.message)
+          : "Có lỗi xảy ra";
+      toast.error(message);
     },
   });
 
@@ -130,7 +277,9 @@ function OrderDetailModal({
       <div className="space-y-5 mt-2">
         {/* Order ID + status */}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <span className="font-mono text-sm text-slate-500">#{order.id?.slice(0, 8).toUpperCase()}</span>
+          <span className="font-mono text-sm text-slate-500">
+            #{order.id?.slice(0, 8).toUpperCase()}
+          </span>
           <StatusBadge status={order.status} />
         </div>
 
@@ -140,11 +289,21 @@ function OrderDetailModal({
             <User className="w-4 h-4 text-slate-400" /> Thông tin khách hàng
           </p>
           <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-300">
-            <div><span className="text-slate-400">Họ tên:</span> {order.user?.fullName}</div>
-            <div><span className="text-slate-400">Email:</span> {order.user?.email}</div>
-            <div><span className="text-slate-400">SĐT:</span> {order.phone}</div>
-            <div><span className="text-slate-400">Thanh toán:</span>{' '}
-              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.color}`}>
+            <div>
+              <span className="text-slate-400">Họ tên:</span>{" "}
+              {order.user?.fullName}
+            </div>
+            <div>
+              <span className="text-slate-400">Email:</span> {order.user?.email}
+            </div>
+            <div>
+              <span className="text-slate-400">SĐT:</span> {order.phone}
+            </div>
+            <div>
+              <span className="text-slate-400">Thanh toán:</span>{" "}
+              <span
+                className={`text-xs font-semibold px-1.5 py-0.5 rounded ${PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.color}`}
+              >
                 {PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.label}
               </span>
             </div>
@@ -154,7 +313,9 @@ function OrderDetailModal({
             <span>{order.shippingAddress}</span>
           </div>
           {order.note && (
-            <p className="text-slate-500 italic text-xs">"Ghi chú: {order.note}"</p>
+            <p className="text-slate-500 italic text-xs">
+              Ghi chú: {order.note}
+            </p>
           )}
         </div>
 
@@ -164,16 +325,23 @@ function OrderDetailModal({
             <Boxes className="w-4 h-4 text-slate-400" /> Sản phẩm
           </p>
           <div className="space-y-2">
-            {order.items?.map((item: any) => (
+            {order.items?.map((item) => (
               <div key={item.id} className="flex items-center gap-3 text-sm">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0">
-                  {item.product?.images?.[0]?.imageUrl
-                    ? <img src={item.product.images[0].imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
-                    : <Package className="w-5 h-5 text-slate-400" />
-                  }
+                  {item.product?.images?.[0]?.imageUrl ? (
+                    <AssetImage
+                      src={item.product.images[0].imageUrl}
+                      alt=""
+                      className="h-10 w-10 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <Package className="w-5 h-5 text-slate-400" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{item.product?.name}</p>
+                  <p className="font-medium text-slate-800 dark:text-slate-100 truncate">
+                    {item.product?.name}
+                  </p>
                   <p className="text-xs text-slate-400">
                     {item.quantity} × {formatMoney(Number(item.price))}
                     {item.reservedBatch && (
@@ -191,7 +359,9 @@ function OrderDetailModal({
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-between text-sm font-bold">
             <span>Tổng cộng</span>
-            <span className="text-emerald-600 text-base">{formatMoney(Number(order.totalAmount))}</span>
+            <span className="text-emerald-600 text-base">
+              {formatMoney(Number(order.totalAmount))}
+            </span>
           </div>
         </div>
 
@@ -201,18 +371,27 @@ function OrderDetailModal({
             <Clock className="w-4 h-4 text-slate-400" /> Lịch sử trạng thái
           </p>
           <div className="space-y-2">
-            {order.tracking?.map((t: any, i: number) => (
+            {order.tracking?.map((t, i) => (
               <div key={t.id} className="flex gap-3 items-start">
                 <div className="flex flex-col items-center">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1 shrink-0" />
                   {i < (order.tracking?.length ?? 0) - 1 && (
-                    <div className="w-0.5 h-full bg-slate-200 dark:bg-slate-700 my-1" style={{ minHeight: 12 }} />
+                    <div
+                      className="w-0.5 h-full bg-slate-200 dark:bg-slate-700 my-1"
+                      style={{ minHeight: 12 }}
+                    />
                   )}
                 </div>
                 <div className="pb-2">
                   <StatusBadge status={t.status} />
-                  {t.description && <p className="text-xs text-slate-500 mt-1">{t.description}</p>}
-                  <p className="text-xs text-slate-400 mt-0.5">{formatDate(t.createdAt)}</p>
+                  {t.description && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      {t.description}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {formatDate(t.createdAt)}
+                  </p>
                 </div>
               </div>
             ))}
@@ -222,7 +401,9 @@ function OrderDetailModal({
         {/* Status update (Seller/Admin) */}
         {canUpdate && (
           <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
-            <p className="font-semibold text-sm text-slate-700 dark:text-slate-200">Cập nhật trạng thái</p>
+            <p className="font-semibold text-sm text-slate-700 dark:text-slate-200">
+              Cập nhật trạng thái
+            </p>
 
             <div className="grid grid-cols-2 gap-2">
               {transitions.map((t) => (
@@ -231,8 +412,8 @@ function OrderDetailModal({
                   onClick={() => setNewStatus(t.value)}
                   className={`py-2 px-3 rounded-xl border text-sm font-medium transition-all ${
                     newStatus === t.value
-                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700'
-                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-300'
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700"
+                      : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-300"
                   }`}
                 >
                   {t.label}
@@ -240,39 +421,10 @@ function OrderDetailModal({
               ))}
             </div>
 
-            {newStatus === 'SHIPPED' && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/40 space-y-2">
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Thông tin vận chuyển</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-blue-600 dark:text-blue-400 mb-1 block">Đơn vị</label>
-                    <select
-                      value={shippingPartner}
-                      onChange={(e) => setShippingPartner(e.target.value)}
-                      className="w-full text-sm rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 px-2 py-1.5"
-                    >
-                      <option value="GHTK">GHTK</option>
-                      <option value="GHN">Giao Hàng Nhanh</option>
-                      <option value="VTP">Viettel Post</option>
-                      <option value="VNPOST">VNPost</option>
-                      <option value="OTHER">Khác</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-blue-600 dark:text-blue-400 mb-1 block">Mã vận đơn</label>
-                    <input
-                      value={trackingCode}
-                      onChange={(e) => setTrackingCode(e.target.value)}
-                      placeholder="Nhập mã..."
-                      className="w-full text-sm rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 px-2 py-1.5"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Ghi chú (tùy chọn)</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Ghi chú (tùy chọn)
+              </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -283,13 +435,19 @@ function OrderDetailModal({
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>Đóng</Button>
+              <Button variant="ghost" onClick={onClose}>
+                Đóng
+              </Button>
               <Button
                 onClick={() => mutation.mutate()}
                 disabled={!newStatus || mutation.isPending}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                {mutation.isPending ? <LoadingSpinner size="sm" /> : 'Lưu thay đổi'}
+                {mutation.isPending ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  "Lưu thay đổi"
+                )}
               </Button>
             </div>
           </div>
@@ -297,7 +455,9 @@ function OrderDetailModal({
 
         {!canUpdate && (
           <div className="flex justify-end pt-2">
-            <Button variant="ghost" onClick={onClose}>Đóng</Button>
+            <Button variant="ghost" onClick={onClose}>
+              Đóng
+            </Button>
           </div>
         )}
       </div>
@@ -310,22 +470,22 @@ export default function OrdersManagementPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
   const [filter, setFilter] = useState({
-    status: '',
-    search: '',
-    dateFrom: '',
-    dateTo: '',
+    status: "",
+    search: "",
+    dateFrom: "",
+    dateTo: "",
     page: 1,
   });
 
-  const isAdminOrSeller = user?.role === 'ADMIN' || user?.role === 'SELLER';
+  const isAdminOrSeller = user?.role === "ADMIN" || user?.role === "SELLER";
 
   // ── Dashboard Stats ──────────────────────────────────────────────────────
   const { data: stats } = useQuery({
-    queryKey: ['orders-stats'],
+    queryKey: ["orders-stats"],
     queryFn: async () => {
-      const res = await api.get('/api/v1/orders/dashboard');
+      const res = await api.get("/api/v1/orders/dashboard");
       return res.data.data;
     },
     enabled: isAdminOrSeller,
@@ -333,20 +493,20 @@ export default function OrdersManagementPage() {
 
   // ── Orders List ──────────────────────────────────────────────────────────
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['orders-list', filter],
+    queryKey: ["orders-list", filter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filter.status) params.append('status', filter.status);
-      if (filter.search) params.append('search', filter.search);
-      if (filter.dateFrom) params.append('dateFrom', filter.dateFrom);
-      if (filter.dateTo) params.append('dateTo', filter.dateTo);
-      params.append('page', String(filter.page));
-      params.append('limit', '15');
+      if (filter.status) params.append("status", filter.status);
+      if (filter.search) params.append("search", filter.search);
+      if (filter.dateFrom) params.append("dateFrom", filter.dateFrom);
+      if (filter.dateTo) params.append("dateTo", filter.dateTo);
+      params.append("page", String(filter.page));
+      params.append("limit", "15");
 
       // Admin/Seller uses paginated list
       const endpoint = isAdminOrSeller
         ? `/api/v1/orders?${params}`
-        : '/api/v1/orders/my';
+        : "/api/v1/orders/my";
 
       const res = await api.get(endpoint);
       return res.data;
@@ -355,10 +515,19 @@ export default function OrdersManagementPage() {
   });
 
   // Handle both paginated (admin/seller) and flat array (customer)
-  const orders = ordersData?.data ?? [];
+  const orders = (ordersData?.data ?? []) as DashboardOrder[];
   const meta = ordersData?.meta ?? null;
 
-  const statuses: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PACKING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+  const statuses: OrderStatus[] = [
+    "PENDING",
+    "CONFIRMED",
+    "PACKING",
+    "PROCESSING",
+    "SHIPPED",
+    "DELIVERED",
+    "CANCELLED",
+    "RETURNED",
+  ];
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto">
@@ -368,22 +537,47 @@ export default function OrdersManagementPage() {
           <ShoppingCart className="w-6 h-6 text-emerald-600" /> Quản lý đơn hàng
         </h1>
         <p className="text-sm text-slate-400 mt-0.5">
-          Theo dõi, xử lý và cập nhật trạng thái đơn hàng
+          Theo dõi xác nhận/đóng gói đơn; vận chuyển được cập nhật qua Shipment
         </p>
       </div>
 
       {/* Stats */}
       {isAdminOrSeller && stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard icon={<Package className="w-4 h-4 text-slate-600" />} label="Tổng đơn" value={stats.total} color="bg-slate-100" />
-          <StatCard icon={<Clock className="w-4 h-4 text-amber-600" />} label="Chờ xác nhận" value={stats.pending} color="bg-amber-50" />
-          <StatCard icon={<Truck className="w-4 h-4 text-cyan-600" />} label="Đang giao" value={stats.shipped} color="bg-cyan-50" />
-          <StatCard icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />} label="Hoàn thành" value={stats.delivered} color="bg-emerald-50" />
-          <StatCard icon={<XCircle className="w-4 h-4 text-red-500" />} label="Đã hủy" value={stats.cancelled} color="bg-red-50" />
+          <StatCard
+            icon={<Package className="w-4 h-4 text-slate-600" />}
+            label="Tổng đơn"
+            value={stats.total}
+            color="bg-slate-100"
+          />
+          <StatCard
+            icon={<Clock className="w-4 h-4 text-amber-600" />}
+            label="Chờ xác nhận"
+            value={stats.pending}
+            color="bg-amber-50"
+          />
+          <StatCard
+            icon={<Truck className="w-4 h-4 text-cyan-600" />}
+            label="Đang giao"
+            value={stats.shipped}
+            color="bg-cyan-50"
+          />
+          <StatCard
+            icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+            label="Hoàn thành"
+            value={stats.delivered}
+            color="bg-emerald-50"
+          />
+          <StatCard
+            icon={<XCircle className="w-4 h-4 text-red-500" />}
+            label="Đã hủy"
+            value={stats.cancelled}
+            color="bg-red-50"
+          />
           <StatCard
             icon={<TrendingUp className="w-4 h-4 text-violet-600" />}
             label="Doanh thu tháng"
-            value={stats.monthRevenue ? formatMoney(stats.monthRevenue) : '0đ'}
+            value={stats.monthRevenue ? formatMoney(stats.monthRevenue) : "0đ"}
             color="bg-violet-50"
             sub={`${stats.monthOrders} đơn`}
           />
@@ -398,40 +592,85 @@ export default function OrdersManagementPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Trạng thái</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Trạng thái
+              </label>
               <select
                 value={filter.status}
-                onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))}
+                onChange={(e) =>
+                  setFilter((f) => ({ ...f, status: e.target.value, page: 1 }))
+                }
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Tất cả trạng thái</option>
                 {statuses.map((s) => (
-                  <option key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</option>
+                  <option key={s} value={s}>
+                    {STATUS_CONFIG[s]?.label ?? s}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Tìm kiếm</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Tìm kiếm
+              </label>
               <div className="relative">
                 <Input
                   placeholder="Tên KH, SĐT..."
                   value={filter.search}
-                  onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value, page: 1 }))}
+                  onChange={(e) =>
+                    setFilter((f) => ({
+                      ...f,
+                      search: e.target.value,
+                      page: 1,
+                    }))
+                  }
                 />
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Từ ngày</label>
-              <Input type="date" value={filter.dateFrom} onChange={(e) => setFilter((f) => ({ ...f, dateFrom: e.target.value, page: 1 }))} />
+              <label className="text-xs text-slate-400 mb-1 block">
+                Từ ngày
+              </label>
+              <Input
+                type="date"
+                value={filter.dateFrom}
+                onChange={(e) =>
+                  setFilter((f) => ({
+                    ...f,
+                    dateFrom: e.target.value,
+                    page: 1,
+                  }))
+                }
+              />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Đến ngày</label>
-              <Input type="date" value={filter.dateTo} onChange={(e) => setFilter((f) => ({ ...f, dateTo: e.target.value, page: 1 }))} />
+              <label className="text-xs text-slate-400 mb-1 block">
+                Đến ngày
+              </label>
+              <Input
+                type="date"
+                value={filter.dateTo}
+                onChange={(e) =>
+                  setFilter((f) => ({ ...f, dateTo: e.target.value, page: 1 }))
+                }
+              />
             </div>
           </div>
-          {(filter.status || filter.search || filter.dateFrom || filter.dateTo) && (
+          {(filter.status ||
+            filter.search ||
+            filter.dateFrom ||
+            filter.dateTo) && (
             <button
-              onClick={() => setFilter({ status: '', search: '', dateFrom: '', dateTo: '', page: 1 })}
+              onClick={() =>
+                setFilter({
+                  status: "",
+                  search: "",
+                  dateFrom: "",
+                  dateTo: "",
+                  page: 1,
+                })
+              }
               className="mt-3 text-xs text-slate-400 hover:text-red-500 flex items-center gap-1"
             >
               <X className="w-3 h-3" /> Xóa bộ lọc
@@ -443,7 +682,9 @@ export default function OrdersManagementPage() {
       {/* Orders Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
         {isLoading ? (
-          <div className="flex justify-center py-16"><LoadingSpinner /></div>
+          <div className="flex justify-center py-16">
+            <LoadingSpinner />
+          </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <ShoppingCart className="w-12 h-12 mb-3 opacity-20" />
@@ -454,20 +695,36 @@ export default function OrdersManagementPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Mã đơn</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Mã đơn
+                  </th>
                   {isAdminOrSeller && (
-                    <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Khách hàng</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                      Khách hàng
+                    </th>
                   )}
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Sản phẩm</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Tổng tiền</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Thanh toán</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Trạng thái</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Ngày tạo</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">Thao tác</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Sản phẩm
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Tổng tiền
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Thanh toán
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Trạng thái
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Ngày tạo
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wide">
+                    Thao tác
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {orders.map((order: any) => (
+                {orders.map((order) => (
                   <tr
                     key={order.id}
                     className="border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
@@ -479,26 +736,37 @@ export default function OrdersManagementPage() {
                     </td>
                     {isAdminOrSeller && (
                       <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800 dark:text-slate-100">{order.user?.fullName}</p>
+                        <p className="font-medium text-slate-800 dark:text-slate-100">
+                          {order.user?.fullName}
+                        </p>
                         <p className="text-xs text-slate-400">{order.phone}</p>
                       </td>
                     )}
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 max-w-[180px]">
-                      <p className="truncate">{order.items?.map((i: any) => `${i.quantity}× ${i.product?.name}`).join(', ')}</p>
+                      <p className="truncate">
+                        {order.items
+                          ?.map((i) => `${i.quantity}× ${i.product?.name}`)
+                          .join(", ")}
+                      </p>
                     </td>
                     <td className="px-4 py-3 font-bold text-emerald-600">
                       {formatMoney(Number(order.totalAmount))}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.color}`}>
-                        {PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.label}
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]?.color}`}
+                      >
+                        {
+                          PAYMENT_CONFIG[order.paymentStatus as PaymentStatus]
+                            ?.label
+                        }
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={order.status} />
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
-                      {new Date(order.createdAt).toLocaleDateString('vi-VN')}
+                      {new Date(order.createdAt).toLocaleDateString("vi-VN")}
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -548,8 +816,8 @@ export default function OrdersManagementPage() {
           onClose={() => setSelectedOrder(null)}
           user={user}
           onStatusUpdated={() => {
-            queryClient.invalidateQueries({ queryKey: ['orders-list'] });
-            queryClient.invalidateQueries({ queryKey: ['orders-stats'] });
+            queryClient.invalidateQueries({ queryKey: ["orders-list"] });
+            queryClient.invalidateQueries({ queryKey: ["orders-stats"] });
           }}
         />
       )}

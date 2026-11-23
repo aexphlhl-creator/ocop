@@ -3,9 +3,12 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
 export class JwtRefreshAuthGuard extends AuthGuard('jwt-refresh') {
-  handleRequest(err: any, user: any) {
+  handleRequest<TUser>(err: unknown, user: TUser): TUser {
     if (err || !user) {
-      throw err || new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
+      throw (
+        (err instanceof Error ? err : undefined) ||
+        new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn')
+      );
     }
     return user;
   }

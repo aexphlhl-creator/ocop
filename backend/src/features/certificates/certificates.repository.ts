@@ -48,7 +48,10 @@ export class CertificatesRepository {
     });
   }
 
-  async findByProduct(productId: string, userContext: { id: string; role: RoleName }) {
+  async findByProduct(
+    productId: string,
+    userContext: { id: string; role: RoleName },
+  ) {
     return this.prisma.certificate.findMany({
       where: { productId, deletedAt: null, ...this.roleScope(userContext) },
       include: this.include,
@@ -56,7 +59,10 @@ export class CertificatesRepository {
     });
   }
 
-  async findByBatch(batchId: string, userContext: { id: string; role: RoleName }) {
+  async findByBatch(
+    batchId: string,
+    userContext: { id: string; role: RoleName },
+  ) {
     return this.prisma.certificate.findMany({
       where: { batchId, deletedAt: null, ...this.roleScope(userContext) },
       include: this.include,
@@ -64,7 +70,10 @@ export class CertificatesRepository {
     });
   }
 
-  async findExpiring(daysAhead: number, userContext: { id: string; role: RoleName }) {
+  async findExpiring(
+    daysAhead: number,
+    userContext: { id: string; role: RoleName },
+  ) {
     const now = new Date();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + daysAhead);
@@ -80,8 +89,9 @@ export class CertificatesRepository {
     });
   }
 
-  async create(data: Prisma.CertificateCreateInput) {
-    return this.prisma.certificate.create({
+  async create(data: Prisma.CertificateCreateInput, tx?: Prisma.TransactionClient) {
+    const client = tx ?? this.prisma;
+    return client.certificate.create({
       data,
       include: this.include,
     });
@@ -136,7 +146,9 @@ export class CertificatesRepository {
   }
 
   async productExists(id: string) {
-    return !!(await this.prisma.product.findFirst({ where: { id, deletedAt: null } }));
+    return !!(await this.prisma.product.findFirst({
+      where: { id, deletedAt: null },
+    }));
   }
 
   async batchExists(id: string) {
@@ -145,7 +157,7 @@ export class CertificatesRepository {
 
   async userOwnsProduct(productId: string, userId: string) {
     return !!(await this.prisma.product.findFirst({
-      where: { id: productId, deletedAt: null, business: { userId } },
+      where: { id: productId, deletedAt: null, sellerId: userId },
     }));
   }
 
@@ -153,7 +165,7 @@ export class CertificatesRepository {
     return !!(await this.prisma.inventoryBatch.findFirst({
       where: {
         id: batchId,
-        inventory: { product: { business: { userId } } },
+        inventory: { product: { sellerId: userId } },
       },
     }));
   }
@@ -182,7 +194,8 @@ export class CertificatesRepository {
       ...this.roleScope(params.userContext),
     };
 
-    if (params.certificateTypeId) where.certificateTypeId = params.certificateTypeId;
+    if (params.certificateTypeId)
+      where.certificateTypeId = params.certificateTypeId;
     if (params.status) where.status = params.status;
     if (params.productId) where.productId = params.productId;
     if (params.batchId) where.batchId = params.batchId;
@@ -194,27 +207,36 @@ export class CertificatesRepository {
     if (params.search) {
       where.OR = [
         { certificateNumber: { contains: params.search, mode: 'insensitive' } },
-        { issuingOrganization: { contains: params.search, mode: 'insensitive' } },
+        {
+          issuingOrganization: { contains: params.search, mode: 'insensitive' },
+        },
       ];
     }
 
     return where;
   }
 
-  private roleScope(userContext: { id: string; role: RoleName }): Prisma.CertificateWhereInput {
+  private roleScope(userContext: {
+    id: string;
+    role: RoleName;
+  }): Prisma.CertificateWhereInput {
     if (userContext.role !== RoleName.SELLER) return {};
 
     return {
       OR: [
-        { product: { business: { userId: userContext.id } } },
-        { batch: { inventory: { product: { business: { userId: userContext.id } } } } },
+        { product: { sellerId: userContext.id } },
+        {
+          batch: {
+            inventory: { product: { sellerId: userContext.id } },
+          },
+        },
       ],
     };
   }
 
   private readonly include = {
     certificateType: true,
-    product: { select: { id: true, name: true, businessId: true } },
+    product: { select: { id: true, name: true, sellerId: true } },
     batch: { select: { id: true, batchNumber: true, expiryDate: true } },
     files: { orderBy: { uploadedAt: 'desc' as const } },
     createdBy: { select: { id: true, fullName: true, email: true } },

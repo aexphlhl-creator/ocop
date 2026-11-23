@@ -8,7 +8,10 @@ import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
-export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
+export class JwtRefreshStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-refresh',
+) {
   constructor(
     configService: ConfigService,
     private readonly redisService: RedisService,
@@ -22,12 +25,20 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   }
 
   async validate(req: Request, payload: JwtPayload) {
-    const refreshToken = req.body.refreshToken;
-    if (!refreshToken) {
-      throw new UnauthorizedException('Refresh token không tìm thấy trong body');
+    const body: unknown = req.body;
+    const refreshToken =
+      body && typeof body === 'object' && 'refreshToken' in body
+        ? body.refreshToken
+        : undefined;
+    if (typeof refreshToken !== 'string' || !refreshToken) {
+      throw new UnauthorizedException(
+        'Refresh token không tìm thấy trong body',
+      );
     }
 
-    const isBlacklisted = await this.redisService.get(`auth:blacklist:${refreshToken}`);
+    const isBlacklisted = await this.redisService.get(
+      `auth:blacklist:${refreshToken}`,
+    );
     if (isBlacklisted) {
       throw new UnauthorizedException('Refresh token đã bị vô hiệu hóa');
     }
@@ -35,6 +46,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
       sub: payload.sub,
       email: payload.email,
       role: payload.role,
+      version: payload.version,
       refreshToken,
     };
   }

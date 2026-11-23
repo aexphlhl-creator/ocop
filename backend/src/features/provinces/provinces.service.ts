@@ -17,11 +17,17 @@ export class ProvincesService {
   async findAll() {
     const cachedData = await this.redisService.get(this.CACHE_KEY_LIST);
     if (cachedData) {
-      return JSON.parse(cachedData);
+      return JSON.parse(cachedData) as Awaited<
+        ReturnType<ProvincesRepository['findAll']>
+      >;
     }
 
     const provinces = await this.provincesRepository.findAll();
-    await this.redisService.set(this.CACHE_KEY_LIST, JSON.stringify(provinces), this.CACHE_TTL_LIST);
+    await this.redisService.set(
+      this.CACHE_KEY_LIST,
+      JSON.stringify(provinces),
+      this.CACHE_TTL_LIST,
+    );
     return provinces;
   }
 
@@ -39,19 +45,33 @@ export class ProvincesService {
   }
 
   async getGeoJson(code: string) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(code)) {
+      throw new NotFoundException('Mã tỉnh/thành phố không hợp lệ');
+    }
     const province = await this.provincesRepository.findByCode(code);
     if (!province) {
-      throw new NotFoundException(`Tỉnh/Thành phố có mã "${code}" không tồn tại`);
+      throw new NotFoundException(
+        `Tỉnh/Thành phố có mã "${code}" không tồn tại`,
+      );
     }
 
     const fileName = `${code}.geojson`;
-    const filePath = join(process.cwd(), 'assets', 'geojson', 'provinces', fileName);
+    const filePath = join(
+      process.cwd(),
+      'assets',
+      'geojson',
+      'provinces',
+      fileName,
+    );
 
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- code is validated as one path segment under the fixed provinces directory.
       const content = await fs.readFile(filePath, 'utf-8');
-      return JSON.parse(content);
+      return JSON.parse(content) as unknown;
     } catch {
-      throw new NotFoundException(`Không tìm thấy dữ liệu bản đồ số GeoJSON của tỉnh/thành phố mã "${code}"`);
+      throw new NotFoundException(
+        `Không tìm thấy dữ liệu bản đồ số GeoJSON của tỉnh/thành phố mã "${code}"`,
+      );
     }
   }
 }

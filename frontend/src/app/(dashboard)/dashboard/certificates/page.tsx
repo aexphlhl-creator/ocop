@@ -1,11 +1,13 @@
 'use client';
 
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { api } from '../../../../services/api';
 import { Button } from '../../../../components/ui/button';
-import { Badge } from '../../../../components/ui/badge';
+import { Badge, type BadgeProps } from '../../../../components/ui/badge';
 import { Card, CardContent } from '../../../../components/ui/card';
 import { EmptyState } from '../../../../components/ui/empty-state';
 import { LoadingSpinner } from '../../../../components/ui/loading-spinner';
@@ -22,7 +24,10 @@ import {
   ScrollText,
   ShieldCheck,
   Upload,
+  Printer,
+  Award,
 } from 'lucide-react';
+import { OcopCertificateModal } from '../../../../components/certificates/OcopCertificateModal';
 
 type Certificate = {
   id: string;
@@ -40,7 +45,7 @@ type Certificate = {
   files?: Array<{ id: string; fileName: string; fileUrl: string; mimeType: string; fileSize: number }>;
 };
 
-const STATUS_CONFIG: Record<string, { label: string; variant: any }> = {
+const STATUS_CONFIG: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
   ACTIVE: { label: 'Hiệu lực', variant: 'success' },
   EXPIRED: { label: 'Hết hạn', variant: 'error' },
   REVOKED: { label: 'Thu hồi', variant: 'warning' },
@@ -51,7 +56,7 @@ function formatDate(value?: string) {
   return value ? new Date(value).toLocaleDateString('vi-VN') : '-';
 }
 
-function StatCard({ icon, label, value, tone }: any) {
+function StatCard({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value?: number; tone: string }) {
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4">
       <div className={`p-3 rounded-xl ${tone}`}>{icon}</div>
@@ -73,6 +78,7 @@ export default function CertificatesPage() {
     expiryTo: '',
   });
   const [selected, setSelected] = useState<Certificate | null>(null);
+  const [showCertPrint, setShowCertPrint] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [form, setForm] = useState({
     certificateNumber: '',
@@ -98,7 +104,7 @@ export default function CertificatesPage() {
 
   const { data: types = [] } = useQuery({
     queryKey: ['certificate-types'],
-    queryFn: () => api.get('/api/v1/certificates/types').then((r) => r.data.data || []),
+    queryFn: () => api.get<{ data: Array<{ id: string; name: string }> }>('/api/v1/certificates/types').then((r) => r.data.data || []),
   });
 
   const { data: stats } = useQuery({
@@ -113,7 +119,7 @@ export default function CertificatesPage() {
 
   const { data: products = [] } = useQuery({
     queryKey: ['certificate-products'],
-    queryFn: () => api.get('/api/v1/products?limit=100').then((r) => r.data.data || []),
+    queryFn: () => api.get<{ data: Array<{ id: string; name: string }> }>('/api/v1/products?limit=100').then((r) => r.data.data || []),
   });
 
   const createMutation = useMutation({
@@ -146,7 +152,7 @@ export default function CertificatesPage() {
       });
       setFiles(null);
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Không thể tạo chứng nhận'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Không thể tạo chứng nhận')),
   });
 
   const inputCls = 'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500';
@@ -187,7 +193,7 @@ export default function CertificatesPage() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <select className={inputCls} value={filters.certificateTypeId} onChange={(e) => setFilters((f) => ({ ...f, certificateTypeId: e.target.value }))}>
               <option value="">Tất cả loại</option>
-              {types.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <select className={inputCls} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
               <option value="">Tất cả trạng thái</option>
@@ -195,7 +201,7 @@ export default function CertificatesPage() {
             </select>
             <select className={inputCls} value={filters.productId} onChange={(e) => setFilters((f) => ({ ...f, productId: e.target.value }))}>
               <option value="">Tất cả sản phẩm</option>
-              {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <input className={inputCls} value={filters.batchId} onChange={(e) => setFilters((f) => ({ ...f, batchId: e.target.value }))} placeholder="Batch ID" />
             <input className={inputCls} type="date" value={filters.expiryTo} onChange={(e) => setFilters((f) => ({ ...f, expiryTo: e.target.value }))} />
@@ -285,15 +291,43 @@ export default function CertificatesPage() {
                 ))}
               </div>
             </div>
+
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400">Bảo chứng số hóa OCOP Quốc Gia</span>
+              <Button
+                type="button"
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => setShowCertPrint(true)}
+              >
+                <Printer className="w-4 h-4" /> In Giấy chứng nhận A4
+              </Button>
+            </div>
           </div>
         )}
       </Modal>
 
+      {selected && (
+        <OcopCertificateModal
+          isOpen={showCertPrint}
+          onClose={() => setShowCertPrint(false)}
+          data={{
+            certificateNumber: selected.certificateNumber,
+            productName: selected.product?.name || selected.batch?.batchNumber || 'Hồ sơ chứng nhận',
+            issuingOrganization: selected.issuingOrganization,
+            status: STATUS_CONFIG[selected.status]?.label || selected.status,
+            issueDate: selected.issueDate,
+            expiryDate: selected.expiryDate,
+            qrUrl: selected.verificationUrl,
+            documentHash: selected.documentHash,
+          }}
+        />
+      )}
+
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Thêm chứng nhận" className="max-w-2xl">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div><label className={labelCls}>Số chứng nhận *</label><input className={inputCls} value={form.certificateNumber} onChange={(e) => setForm((f) => ({ ...f, certificateNumber: e.target.value }))} /></div>
-          <div><label className={labelCls}>Loại chứng nhận *</label><select className={inputCls} value={form.certificateTypeId} onChange={(e) => setForm((f) => ({ ...f, certificateTypeId: e.target.value }))}><option value="">Chọn loại</option>{types.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-          <div><label className={labelCls}>Product</label><select className={inputCls} value={form.productId} onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}><option value="">Không gắn product</option>{products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+          <div><label className={labelCls}>Loại chứng nhận *</label><select className={inputCls} value={form.certificateTypeId} onChange={(e) => setForm((f) => ({ ...f, certificateTypeId: e.target.value }))}><option value="">Chọn loại</option>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+          <div><label className={labelCls}>Product</label><select className={inputCls} value={form.productId} onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}><option value="">Không gắn product</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
           <div><label className={labelCls}>Batch ID</label><input className={inputCls} value={form.batchId} onChange={(e) => setForm((f) => ({ ...f, batchId: e.target.value }))} placeholder="UUID lô hàng" /></div>
           <div><label className={labelCls}>Tổ chức cấp *</label><input className={inputCls} value={form.issuingOrganization} onChange={(e) => setForm((f) => ({ ...f, issuingOrganization: e.target.value }))} /></div>
           <div><label className={labelCls}>Trạng thái</label><select className={inputCls} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>{Object.entries(STATUS_CONFIG).map(([key, cfg]) => <option key={key} value={key}>{cfg.label}</option>)}</select></div>

@@ -5,23 +5,52 @@ import { RedisService } from '../redis/redis.service';
 
 describe('StatisticsService', () => {
   let service: StatisticsService;
-  let repository: jest.Mocked<Partial<StatisticsRepository>>;
-  let redisService: jest.Mocked<Partial<RedisService>>;
+  let repository: jest.Mocked<
+    Pick<
+      StatisticsRepository,
+      | 'getOverview'
+      | 'getProductsByProvince'
+      | 'getProductsByCategory'
+      | 'getProductsByOcopLevel'
+      | 'getSellersByProvince'
+      | 'getProductsCreatedAt'
+    >
+  >;
+  let redisService: jest.Mocked<Pick<RedisService, 'get' | 'set'>>;
 
   beforeEach(async () => {
     repository = {
-      getOverview: jest.fn().mockResolvedValue({ products: 10, businesses: 5, categories: 2, provinces: 34 }),
-      getProductsByProvince: jest.fn().mockResolvedValue([{ provinceId: '1', provinceName: 'Lâm Đồng', count: 5 }]),
-      getProductsByCategory: jest.fn().mockResolvedValue([{ categoryId: '1', categoryName: 'Đồ uống', count: 3 }]),
-      getProductsByOcopLevel: jest.fn().mockResolvedValue([{ level: 3, title: '3 sao', count: 4 }]),
-      getBusinessesByProvince: jest.fn().mockResolvedValue([{ provinceId: '1', provinceName: 'Lâm Đồng', count: 2 }]),
+      getOverview: jest.fn().mockResolvedValue({
+        products: 10,
+        sellers: 5,
+        categories: 2,
+        provinces: 34,
+      }),
+      getProductsByProvince: jest
+        .fn()
+        .mockResolvedValue([
+          { provinceId: '1', provinceName: 'Lâm Đồng', count: 5 },
+        ]),
+      getProductsByCategory: jest
+        .fn()
+        .mockResolvedValue([
+          { categoryId: '1', categoryName: 'Đồ uống', count: 3 },
+        ]),
+      getProductsByOcopLevel: jest
+        .fn()
+        .mockResolvedValue([{ level: 3, title: '3 sao', count: 4 }]),
+      getSellersByProvince: jest
+        .fn()
+        .mockResolvedValue([
+          { provinceId: '1', provinceName: 'Lâm Đồng', count: 2 },
+        ]),
       getProductsCreatedAt: jest.fn().mockResolvedValue([]),
     };
 
     redisService = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
-    } as any;
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -40,8 +69,15 @@ describe('StatisticsService', () => {
 
   describe('getOverview', () => {
     it('should return from cache if hits', async () => {
-      const mockResult = { products: 12, businesses: 6, categories: 3, provinces: 34 };
-      jest.spyOn(redisService, 'get').mockResolvedValue(JSON.stringify(mockResult));
+      const mockResult = {
+        products: 12,
+        sellers: 6,
+        categories: 3,
+        provinces: 34,
+      };
+      jest
+        .spyOn(redisService, 'get')
+        .mockResolvedValue(JSON.stringify(mockResult));
 
       const result = await service.getOverview();
       expect(result.products).toBe(12);
@@ -64,7 +100,7 @@ describe('StatisticsService', () => {
         { createdAt: new Date(now.getFullYear(), now.getMonth(), 10) },
         { createdAt: new Date(now.getFullYear(), now.getMonth() - 1, 15) },
       ];
-      repository.getProductsCreatedAt.mockResolvedValue(mockProducts as any);
+      repository.getProductsCreatedAt.mockResolvedValue(mockProducts);
 
       const result = await service.getMonthlyProducts();
 

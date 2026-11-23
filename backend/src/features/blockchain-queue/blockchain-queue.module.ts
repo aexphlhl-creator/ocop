@@ -6,7 +6,11 @@ import { BlockchainQueueService } from './blockchain-queue.service';
 
 @Module({
   imports: [PrismaModule],
-  providers: [BlockchainQueueService, BlockchainProcessor, BlockchainClientService],
+  providers: [
+    BlockchainQueueService,
+    BlockchainProcessor,
+    BlockchainClientService,
+  ],
   exports: [BlockchainQueueService, BlockchainClientService],
 })
 export class BlockchainQueueModule {}

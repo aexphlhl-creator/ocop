@@ -1,52 +1,39 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { createRedisConnectionOptions } from './redis-connection.util';
 
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown {
   private client: Redis;
   private isConnected = false;
   private readonly logger = new Logger(RedisService.name);
 
   constructor(configService: ConfigService) {
-    const redisUrl = configService.get<string>('REDIS_URL');
-    const host = configService.get<string>('REDIS_HOST', 'localhost');
-    const port = configService.get<number>('REDIS_PORT', 6379);
-    const password = configService.get<string>('REDIS_PASSWORD', '');
-
-    if (redisUrl) {
-      this.client = new Redis(redisUrl, {
-        lazyConnect: true,
-        retryStrategy: (times) => {
-          if (times > 3) return null;
-          return Math.min(times * 500, 2000);
-        },
-        enableOfflineQueue: false,
-        tls: redisUrl.startsWith('rediss://') ? {} : undefined,
-      });
-    } else {
-      this.client = new Redis({
-      host,
-      port,
-      password: password || undefined,
+    this.client = new Redis({
+      ...createRedisConnectionOptions(configService),
       lazyConnect: true,
-      // Không retry liên tục khi không có Redis
       retryStrategy: (times) => {
-        if (times > 3) return null; // Dừng retry sau 3 lần
+        if (times > 3) return null;
         return Math.min(times * 500, 2000);
       },
       enableOfflineQueue: false,
-      });
-    }
+    });
 
     this.client.on('connect', () => {
       this.isConnected = true;
       this.logger.log('Redis connected successfully');
     });
 
-    this.client.on('error', () => {
+    this.client.on('error', (error) => {
       this.isConnected = false;
-      // Không log lỗi liên tục để tránh spam console
+      this.logger.warn(`Redis connection error: ${error.message}`);
     });
 
     this.client.on('close', () => {
@@ -58,23 +45,28 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.client.connect();
     } catch {
-      this.logger.warn('Redis không khả dụng – cache bị bỏ qua, hệ thống vẫn hoạt động bình thường');
+      this.logger.warn(
+        'Redis is unavailable; cache will be skipped and the application will continue running',
+      );
     }
   }
 
   async onModuleDestroy() {
     try {
-      await this.client.quit();
+      this.client.disconnect();
     } catch {
       // ignore
     }
+  }
+
+  async onApplicationShutdown() {
+    await this.onModuleDestroy();
   }
 
   getClient(): Redis {
     return this.client;
   }
 
-  /** Trả về null khi Redis không khả dụng thay vì throw */
   async get(key: string): Promise<string | null> {
     if (!this.isConnected) return null;
     try {
@@ -84,7 +76,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Bỏ qua silently khi Redis không khả dụng */
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     if (!this.isConnected) return;
     try {
@@ -104,6 +95,28 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.del(key);
     } catch {
       // ignore
+    }
+  }
+
+  async deleteByPatterns(patterns: string[]): Promise<void> {
+    if (!this.isConnected) return;
+    try {
+      for (const pattern of patterns) {
+        let cursor = '0';
+        do {
+          const [nextCursor, keys] = await this.client.scan(
+            cursor,
+            'MATCH',
+            pattern,
+            'COUNT',
+            100,
+          );
+          cursor = nextCursor;
+          if (keys.length > 0) await this.client.unlink(...keys);
+        } while (cursor !== '0');
+      }
+    } catch {
+      // Cache invalidation must never make the primary database operation fail.
     }
   }
 }

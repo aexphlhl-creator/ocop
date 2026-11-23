@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
+import { escapeHtml } from '@/utils/escape-html';
 import 'leaflet/dist/leaflet.css';
 
 const STAGE_ICON_MAP: Record<string, string> = {
@@ -11,6 +12,7 @@ const STAGE_ICON_MAP: Record<string, string> = {
   PROCESSING: '🏭',
   PACKAGING: '📫',
   WAREHOUSE: '🏬',
+  HANDOVER_TO_CARRIER: '🤝',
   SHIPPING: '🚚',
   DISTRIBUTOR: '🏪',
   RETAIL: '🛒',
@@ -73,8 +75,10 @@ export default function SupplyChainMap({ points }: SupplyChainMapProps) {
     const map = L.map(containerRef.current, { zoomControl: true }).setView(center, 7);
     mapRef.current = map;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      attribution: '&copy; Google Maps',
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
     }).addTo(map);
 
     if (positions.length > 1) {
@@ -97,15 +101,15 @@ export default function SupplyChainMap({ points }: SupplyChainMapProps) {
           <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid #F1F5F9;padding-bottom:8px;margin-bottom:8px">
             <span style="font-size:22px">${emoji}</span>
             <div>
-              <div style="font-weight:700;font-size:13px;color:#0F172A">${point.stage?.displayName ?? 'Công đoạn'}</div>
+              <div style="font-weight:700;font-size:13px;color:#0F172A">${escapeHtml(point.stage?.displayName ?? 'Công đoạn')}</div>
               <div style="font-size:10px;color:#94A3B8">Bước ${index + 1}</div>
             </div>
           </div>
           <div style="font-size:12px;color:#475569;line-height:1.6">
-            <div><strong>📍 Địa điểm:</strong> ${point.location}</div>
-            <div><strong>👤 Người TH:</strong> ${point.actorName}</div>
+            <div><strong>📍 Địa điểm:</strong> ${escapeHtml(point.location)}</div>
+            <div><strong>👤 Người TH:</strong> ${escapeHtml(point.actorName)}</div>
             <div><strong>🕐 Thời gian:</strong> ${new Date(point.createdAt).toLocaleString('vi-VN')}</div>
-            ${point.note ? `<div style="margin-top:4px;color:#64748B">${point.note}</div>` : ''}
+            ${point.note ? `<div style="margin-top:4px;color:#64748B">${escapeHtml(point.note)}</div>` : ''}
           </div>
         </div>
       `;

@@ -1,5 +1,7 @@
 'use client';
 
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
@@ -12,6 +14,8 @@ interface ProductReviewsProps {
   productId: string;
 }
 
+interface Review { id: string; rating: number; comment: string; createdAt: string; user?: { fullName: string } }
+
 export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -21,7 +25,7 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
   const { data: reviews = [], isLoading } = useQuery({
     queryKey: ['product-reviews', productId],
     queryFn: async () => {
-      const res = await api.get(`/api/v1/reviews/product/${productId}`);
+      const res = await api.get<{ data: Review[] }>(`/api/v1/reviews/product/${productId}`);
       return res.data.data;
     },
   });
@@ -38,8 +42,8 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
       queryClient.invalidateQueries({ queryKey: ['product-reviews', productId] });
       queryClient.invalidateQueries({ queryKey: ['productDetail', productId] }); // Update average rating
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Có lỗi xảy ra khi gửi đánh giá');
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Có lỗi xảy ra khi gửi đánh giá'));
     }
   });
 
@@ -116,7 +120,7 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
             Chưa có đánh giá nào cho sản phẩm này. Hãy là người đầu tiên!
           </div>
         ) : (
-          reviews.map((review: any) => (
+          reviews.map((review) => (
             <div key={review.id} className="flex gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm">
               <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 font-bold shrink-0">
                 {review.user?.fullName?.charAt(0).toUpperCase()}

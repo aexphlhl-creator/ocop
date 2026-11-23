@@ -42,7 +42,7 @@ export function AnalyticsCharts() {
     return value.toString();
   };
 
-  const formattedPieData = ordersStatusData?.map((item: any) => ({
+  const formattedPieData = ordersStatusData?.map((item: { name: string; value: number }) => ({
     name: STATUS_LABELS[item.name] || item.name,
     value: item.value,
   })) || [];
@@ -87,7 +87,7 @@ export function AnalyticsCharts() {
                   <YAxis tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickFormatter={formatCurrency} axisLine={false} tickLine={false} />
                   <Tooltip 
                     contentStyle={tooltipStyle} 
-                    formatter={(value: any) => [`${Number(value).toLocaleString('vi-VN')}đ`, 'Doanh thu']}
+                    formatter={(value) => [`${Number(value).toLocaleString('vi-VN')}đ`, 'Doanh thu']}
                     labelStyle={{ color: '#94A3B8', marginBottom: '4px', fontWeight: 600 }}
                     cursor={{ stroke: '#10B981', strokeWidth: 1, strokeDasharray: '4 4' }}
                   />
@@ -126,7 +126,7 @@ export function AnalyticsCharts() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {formattedPieData.map((_: any, index: number) => (
+                      {formattedPieData.map((_: unknown, index: number) => (
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>
@@ -161,7 +161,7 @@ export function AnalyticsCharts() {
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} width={120} axisLine={false} tickLine={false} />
                     <Tooltip 
                       contentStyle={tooltipStyle} 
-                      formatter={(value: any) => [`${value} sản phẩm`, 'Đã bán']}
+                      formatter={(value) => [`${value} sản phẩm`, 'Đã bán']}
                       cursor={{ fill: 'rgba(245, 158, 11, 0.05)' }}
                     />
                     <Bar dataKey="totalSold" name="Đã bán" fill="#F59E0B" radius={[0, 6, 6, 0]} barSize={28} />

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import Header from '../../components/layout/header';
 import Sidebar from '../../components/layout/sidebar';
 import Topbar from '../../components/layout/topbar';
@@ -8,7 +9,7 @@ import { useCurrentUser } from '../../hooks/use-auth';
 import LoadingSpinner from '../../components/ui/loading-spinner';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isLoading, isAuthenticated } = useCurrentUser();
+  const { user, isLoading, isAuthenticated } = useCurrentUser();
 
   if (isLoading) {
     return (
@@ -37,6 +38,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Sidebar />
           <div className="flex flex-col flex-1 min-w-0 overflow-y-auto relative">
             <Topbar />
+            {user?.mustChangePassword && (
+              <div className="bg-amber-600 text-white px-4 py-2.5 text-xs md:text-sm font-medium flex items-center justify-between shadow-sm z-20">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span>Tài khoản của bạn đang sử dụng mật khẩu tạm do Quản trị viên cấp. Vui lòng đổi mật khẩu để mở khóa các chức năng nghiệp vụ.</span>
+                </div>
+                <Link
+                  href="/dashboard/profile"
+                  className="rounded-lg bg-white/20 hover:bg-white/30 px-3 py-1 text-xs font-bold text-white underline transition-colors shrink-0 ml-3"
+                >
+                  Đổi mật khẩu ngay
+                </Link>
+              </div>
+            )}
             <main className="flex-1 p-6 md:p-8">
               {children}
             </main>

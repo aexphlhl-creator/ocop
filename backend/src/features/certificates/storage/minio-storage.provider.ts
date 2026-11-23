@@ -10,6 +10,7 @@ import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
 import { Client } from 'minio';
 import { StorageProvider, StoredFile } from './storage-provider.interface';
+import { matchesUploadedFileSignature } from '../../../common/utils/uploaded-file-signature';
 
 @Injectable()
 export class MinioStorageProvider implements StorageProvider, OnModuleInit {
@@ -17,7 +18,12 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
   private readonly client: Client;
   private readonly bucketName: string;
   private readonly maxSizeBytes = 20 * 1024 * 1024;
-  private readonly allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+  private readonly allowedMimeTypes = [
+    'application/pdf',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+  ];
   private initialized = false;
 
   constructor(private readonly configService: ConfigService) {
@@ -41,7 +47,10 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
         await this.client.makeBucket(this.bucketName, 'us-east-1');
       }
     } catch (error) {
-      this.logger.error('Không thể khởi tạo bucket MinIO cho certificate storage', error);
+      this.logger.error(
+        'Không thể khởi tạo bucket MinIO cho certificate storage',
+        error,
+      );
       throw error;
     }
   }
@@ -58,7 +67,10 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
       }
       this.initialized = true;
     } catch (error) {
-      this.logger.error('Failed to initialize MinIO bucket for certificate storage', error);
+      this.logger.error(
+        'Failed to initialize MinIO bucket for certificate storage',
+        error,
+      );
       throw error;
     }
   }
@@ -68,20 +80,35 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
       throw new BadRequestException('Không tìm thấy file tải lên');
     }
     if (!this.allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException('Chỉ cho phép tải lên chứng nhận định dạng PDF, PNG, JPG hoặc JPEG');
+      throw new BadRequestException(
+        'Chỉ cho phép tải lên chứng nhận định dạng PDF, PNG, JPG hoặc JPEG',
+      );
     }
     if (file.size > this.maxSizeBytes) {
-      throw new PayloadTooLargeException('Kích thước file vượt quá giới hạn cho phép (20MB)');
+      throw new PayloadTooLargeException(
+        'Kích thước file vượt quá giới hạn cho phép (20MB)',
+      );
+    }
+    if (!matchesUploadedFileSignature(file)) {
+      throw new BadRequestException(
+        'Nội dung file không khớp định dạng chứng nhận',
+      );
     }
 
     const extension = this.normalizeExtension(file.originalname, file.mimetype);
     const objectName = `${folder}/${randomUUID()}${extension}`;
     const documentHash = createHash('sha256').update(file.buffer).digest('hex');
 
-    await this.client.putObject(this.bucketName, objectName, file.buffer, file.size, {
-      'Content-Type': file.mimetype,
-      'X-Document-Hash': documentHash,
-    });
+    await this.client.putObject(
+      this.bucketName,
+      objectName,
+      file.buffer,
+      file.size,
+      {
+        'Content-Type': file.mimetype,
+        'X-Document-Hash': documentHash,
+      },
+    );
 
     return {
       fileName: file.originalname,
@@ -93,7 +120,11 @@ export class MinioStorageProvider implements StorageProvider, OnModuleInit {
   }
 
   async getDownloadUrl(fileUrl: string): Promise<string> {
-    if (!fileUrl || fileUrl.startsWith('/assets/') || /^https?:\/\//i.test(fileUrl)) {
+    if (
+      !fileUrl ||
+      fileUrl.startsWith('/assets/') ||
+      /^https?:\/\//i.test(fileUrl)
+    ) {
       return fileUrl;
     }
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
+import { escapeHtml } from '@/utils/escape-html';
 import 'leaflet/dist/leaflet.css';
 import { motion } from 'framer-motion';
 import { MapPin, Navigation2, CheckCircle2, ShieldCheck, FileCheck2, Clock, Map } from 'lucide-react';
@@ -15,6 +16,7 @@ const STAGE_ICON_MAP: Record<string, string> = {
   PROCESSING: '🏭',
   PACKAGING: '📫',
   WAREHOUSE: '🏬',
+  HANDOVER_TO_CARRIER: '🤝',
   SHIPPING: '🚚',
   DISTRIBUTOR: '🏪',
   RETAIL: '🛒',
@@ -34,23 +36,32 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+interface MapJourney {
+  id: string; createdAt: string; latitude?: number | null; longitude?: number | null;
+  location?: string; actorName?: string; note?: string;
+  stage?: { name: string; displayName: string };
+}
+type LocatedJourney = MapJourney & { latitude: number; longitude: number };
+const EMPTY_JOURNEYS: MapJourney[] = [];
 interface BatchInteractiveMapProps {
-  batchDetail: any;
+  batchDetail?: { journeys?: MapJourney[]; blockchainSynced?: boolean; status?: string };
   onOpenTimeline?: () => void;
 }
 
 export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: BatchInteractiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   
-  const journeys = batchDetail?.journeys || [];
-  const points = useMemo(() => journeys.filter((j: any) => j.latitude != null && j.longitude != null), [journeys]);
+  const journeys = batchDetail?.journeys || EMPTY_JOURNEYS;
+  const points = useMemo(() => journeys.filter((j): j is LocatedJourney => j.latitude != null && j.longitude != null && Number.isFinite(j.latitude) && Number.isFinite(j.longitude)), [journeys]);
   
   // Group points by coordinates
   const groupedPoints = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    points.forEach((p: any) => {
+    const groups: Record<string, LocatedJourney[]> = {};
+    points.forEach((p) => {
       const key = `${p.latitude.toFixed(5)}_${p.longitude.toFixed(5)}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
@@ -82,8 +93,14 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
     mapRef.current = map;
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    const tileUrl = mapStyle === 'satellite'
+      ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+      : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      attribution: '&copy; Google Maps',
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
     }).addTo(map);
 
     const positions = groupedPoints.map(group => [group[0].latitude, group[0].longitude] as [number, number]);
@@ -110,7 +127,7 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
     groupedPoints.forEach((group, groupIndex) => {
       const isLastGroup = groupIndex === groupedPoints.length - 1;
       const primaryEvent = group[group.length - 1]; // The latest event in the group
-      const emoji = STAGE_ICON_MAP[primaryEvent.stage?.name] ?? '📍';
+      const emoji = STAGE_ICON_MAP[primaryEvent.stage?.name ?? ''] ?? '📍';
       
       const borderColor = isLastGroup ? '#EAB308' : '#10B981'; // Yellow for current, Green for completed
       const bgColor = isLastGroup ? '#FEF08A' : '#D1FAE5';
@@ -153,18 +170,18 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
       
       let eventsHtml = '';
       group.forEach(evt => {
-        const evtEmoji = STAGE_ICON_MAP[evt.stage?.name] ?? '📍';
+        const evtEmoji = STAGE_ICON_MAP[evt.stage?.name ?? ''] ?? '📍';
         eventsHtml += `
           <div style="border-left: 2px solid #E2E8F0; padding-left: 10px; margin-bottom: 12px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 4px;">
-              <strong style="font-size:14px; color:#1E293B;">${evtEmoji} ${evt.stage?.displayName}</strong>
+              <strong style="font-size:14px; color:#1E293B;">${evtEmoji} ${escapeHtml(evt.stage?.displayName)}</strong>
               <span style="font-size:10px; color:#64748B; background:#F1F5F9; padding:2px 6px; border-radius:4px;">
                 ${new Date(evt.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
               </span>
             </div>
-            <div style="font-size:12px; color:#475569; margin-bottom: 2px;">📍 ${evt.location}</div>
-            <div style="font-size:12px; color:#475569; margin-bottom: 2px;">👤 ${evt.actorName}</div>
-            ${evt.note ? `<div style="font-size:11px; color:#64748B; font-style:italic; margin-top:2px;">"${evt.note}"</div>` : ''}
+            <div style="font-size:12px; color:#475569; margin-bottom: 2px;">📍 ${escapeHtml(evt.location)}</div>
+            <div style="font-size:12px; color:#475569; margin-bottom: 2px;">👤 ${escapeHtml(evt.actorName)}</div>
+            ${evt.note ? `<div style="font-size:11px; color:#64748B; font-style:italic; margin-top:2px;">"${escapeHtml(evt.note)}"</div>` : ''}
           </div>
         `;
       });
@@ -173,7 +190,7 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
         <div style="min-width: 220px; font-family: inherit;">
           <div style="margin-bottom: 12px; border-bottom: 1px solid #E2E8F0; padding-bottom: 8px;">
             <div style="font-weight:700; color:#0F172A; margin-bottom:4px;">
-              ${group.length > 1 ? `${group.length} Hoạt động tại địa điểm này` : primaryEvent.location}
+              ${group.length > 1 ? `${group.length} Hoạt động tại địa điểm này` : escapeHtml(primaryEvent.location)}
             </div>
             ${batchDetail?.blockchainSynced ? `
               <div style="display:flex; align-items:center; gap:4px; font-size:11px; color:#059669; font-weight:600; background:#D1FAE5; padding:4px 6px; border-radius:4px; width:fit-content;">
@@ -224,7 +241,23 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
         mapRef.current = null;
       }
     };
-  }, [groupedPoints, batchDetail, onOpenTimeline]);
+  }, [groupedPoints, batchDetail, onOpenTimeline, mapStyle]);
+
+  // Sync map tiles with selected map style
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove();
+    }
+    const tileUrl = mapStyle === 'satellite'
+      ? 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+      : 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      attribution: '&copy; Google Maps',
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+    }).addTo(mapRef.current);
+  }, [mapStyle]);
 
   if (points.length === 0) {
     return (
@@ -261,31 +294,33 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
           </div>
           
           <div className="text-xs flex justify-between text-slate-500 mb-1 font-medium">
-            <span>Route Progress</span>
+            <span>Mốc có tọa độ đã ghi nhận</span>
             <span className="text-emerald-600">
-              {batchDetail.status === 'DEPLETED' ? '100%' : 'In Progress'}
+              {points.length}
             </span>
-          </div>
-          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
-            <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: batchDetail.status === 'DEPLETED' ? '100%' : '60%' }}></div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {points.map((point: any, index: number) => {
+          {points.map((point, index) => {
             const isLast = index === points.length - 1;
             const isSelected = selectedStageId === point.id;
-            const emoji = STAGE_ICON_MAP[point.stage?.name] ?? '📍';
+            const emoji = STAGE_ICON_MAP[point.stage?.name ?? ''] ?? '📍';
             
             return (
               <div
                 key={point.id}
                 id={`sidebar-item-${point.id}`}
-                className={`p-3 rounded-xl cursor-pointer transition-colors border ${
-                  isSelected 
-                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
-                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-emerald-200'
-                }`}
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: '0.75rem',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                    border: `1px solid ${isSelected ? ("#34D399" ) : ("#E5E7EB")}`,
+                    background: isSelected ? '#ECFDF5' : '#FFFFFF',
+                    color: isSelected ? '#065F46' : '#1F2937',
+                    ...(isSelected && { boxShadow: '0 0 0 2px #10B981' })
+                  }}
               >
                 <div className="flex gap-3">
                   <div className="mt-0.5 relative flex flex-col items-center">
@@ -316,6 +351,32 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
       <div className="flex-1 relative z-0">
         <div ref={mapContainerRef} className="w-full h-full" />
         
+        {/* Map Style Switcher */}
+        <div className="absolute top-4 right-4 z-[400] bg-white/95 backdrop-blur-md dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 p-1 rounded-xl shadow-lg flex items-center gap-1 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setMapStyle('standard')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              mapStyle === 'standard'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            🗺️ Bản đồ
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapStyle('satellite')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              mapStyle === 'satellite'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            🛰️ Vệ tinh
+          </button>
+        </div>
+
         {/* Route Summary Overlay */}
         <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-lg w-64 pointer-events-auto">
           <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-3 text-sm">Route Summary</h4>
@@ -350,9 +411,11 @@ export default function BatchInteractiveMap({ batchDetail, onOpenTimeline }: Bat
         {/* Legend Overlay */}
         <div className="absolute bottom-6 left-4 z-[400] bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-lg pointer-events-auto text-[11px] font-medium text-slate-600 dark:text-slate-300">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-emerald-100 border border-emerald-500"></div> Completed</div>
+            <div className="flex items-center gap-1"><div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ECFDF5', border: '2px solid #34D399' }}></div> Completed</div>
             <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-yellow-100 border border-yellow-500"></div> Current</div>
-            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-300"></div> Future</div>
+            <div className="flex items-center gap-1">
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#F1F5F9', border: '2px solid #D1D5DB' }}></div> Future
+              </div>
           </div>
         </div>
 

@@ -15,11 +15,17 @@ export class DashboardService {
     const cacheKey = 'dashboard:admin';
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      return JSON.parse(cached) as Awaited<
+        ReturnType<DashboardRepository['getCounts']>
+      >;
     }
 
     const counts = await this.dashboardRepository.getCounts();
-    await this.redisService.set(cacheKey, JSON.stringify(counts), this.CACHE_TTL);
+    await this.redisService.set(
+      cacheKey,
+      JSON.stringify(counts),
+      this.CACHE_TTL,
+    );
     return counts;
   }
 }

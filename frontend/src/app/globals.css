@@ -84,6 +84,14 @@
   --color-border: var(--border);
   --color-muted: var(--muted);
   --color-primary: var(--color-primary);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-error: var(--error);
+  --color-error-bg: var(--error-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --font-sans: var(--font-sans);
 }
 
@@ -253,3 +261,28 @@ body {
   0% { background-position: 0% center; }
   100% { background-position: 200% center; }
 }
+
+/* ============================================================
+   LEAFLET MAP TILES DARK MODE (Zero API key needed)
+   ============================================================ */
+.map-tiles-dark,
+.dark .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important;
+}
+
+@keyframes ward-beacon-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+

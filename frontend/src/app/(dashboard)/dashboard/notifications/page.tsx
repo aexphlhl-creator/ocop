@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '@/utils/api-error';
+
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuthStore } from '@/stores/auth.store';
+import type { ApiResponse } from '@/types/catalog';
 import { api } from '@/services/api';
 import { 
   BellRing, Plus, Search, CheckCircle2, Clock, 
-  XCircle, ArrowRight, PlayCircle, Filter
+  XCircle, Ban
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,34 +17,39 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
+interface Campaign {
+  id: string; title: string; message: string; targetAudience: string;
+  status: string; scheduledAt: string | null; sentCount: number;
+  totalRecipients: number; createdBy?: { fullName: string };
+}
+
 export default function NotificationCampaignsPage() {
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuthStore();
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [filter, setFilter] = useState({ search: '', status: '', page: 1, limit: 10 });
-  const [meta, setMeta] = useState<any>(null);
+  const { data, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ['notificationCampaigns', user?.id, filter],
+    queryFn: async () => (await api.get<ApiResponse<Campaign[]>>('/api/v1/notification-campaigns', {
+      params: { ...filter, status: filter.status || undefined },
+    })).data,
+    enabled: !!user,
+  });
+  const campaigns = data?.data ?? [];
+  const meta = data?.meta;
 
-  const fetchCampaigns = async () => {
+  const handleCancelCampaign = async (id: string, title: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy chiến dịch "${title}"?`)) return;
     try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filter.search) params.append('search', filter.search);
-      if (filter.status) params.append('status', filter.status);
-      params.append('page', filter.page.toString());
-      params.append('limit', filter.limit.toString());
-
-      const { data } = await api.get(`/api/v1/notification-campaigns?${params.toString()}`);
-      setCampaigns(data.data);
-      setMeta(data.meta);
-    } catch (error) {
-      toast.error('Lỗi khi tải danh sách chiến dịch');
+      setCancellingId(id);
+      await api.patch(`/api/v1/notification-campaigns/${id}/cancel`);
+      toast.success('Đã hủy chiến dịch thành công');
+      await refetch();
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, 'Không thể hủy chiến dịch'));
     } finally {
-      setLoading(false);
+      setCancellingId(null);
     }
   };
-
-  useEffect(() => {
-    fetchCampaigns();
-  }, [filter]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -68,16 +78,20 @@ export default function NotificationCampaignsPage() {
   const getTargetTypeColor = (type: string) => {
     switch (type) {
       case 'ALL': return 'bg-purple-100 text-purple-700';
-      case 'ALL_SELLERS': return 'bg-blue-100 text-blue-700';
-      case 'ALL_CUSTOMERS': return 'bg-emerald-100 text-emerald-700';
-      case 'SPECIFIC_BUSINESSES': return 'bg-orange-100 text-orange-700';
-      case 'SPECIFIC_PROVINCES': return 'bg-cyan-100 text-cyan-700';
+      case 'SELLERS': return 'bg-blue-100 text-blue-700';
+      case 'CUSTOMERS': return 'bg-emerald-100 text-emerald-700';
+      case 'SPECIFIC_SELLERS': return 'bg-orange-100 text-orange-700';
+      case 'PROVINCES': return 'bg-cyan-100 text-cyan-700';
+      case 'WARDS': return 'bg-teal-100 text-teal-700';
       default: return 'bg-slate-100 text-slate-700';
     }
   };
 
+  const safeCampaigns = Array.isArray(campaigns) ? campaigns : [];
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {isError && <p role="alert" className="text-red-600">Không tải được chiến dịch. Vui lòng thử lại.</p>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -98,10 +112,10 @@ export default function NotificationCampaignsPage() {
       <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="relative w-full sm:w-96">
           <Input 
-            placeholder="Tìm kiếm chiến dịch..." 
+            placeholder="Tìm kiếm theo tiêu đề, nội dung..." 
             className="pl-10"
             value={filter.search}
-            onChange={(e: any) => setFilter(f => ({ ...f, search: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter(f => ({ ...f, search: e.target.value, page: 1 }))}
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
         </div>
@@ -109,13 +123,15 @@ export default function NotificationCampaignsPage() {
           <select 
             className="h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             value={filter.status}
-            onChange={(e: any) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}
+            onChange={(e) => setFilter(f => ({ ...f, status: e.target.value, page: 1 }))}
           >
             <option value="">Tất cả trạng thái</option>
             <option value="DRAFT">Bản nháp</option>
             <option value="SCHEDULED">Đã lên lịch</option>
             <option value="SENDING">Đang gửi</option>
             <option value="COMPLETED">Hoàn thành</option>
+            <option value="CANCELLED">Đã hủy</option>
+            <option value="FAILED">Thất bại</option>
           </select>
         </div>
       </div>
@@ -123,10 +139,16 @@ export default function NotificationCampaignsPage() {
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 flex justify-center"><LoadingSpinner size="lg" /></div>
-        ) : campaigns.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <BellRing className="w-12 h-12 mx-auto text-slate-300 mb-4" />
-            <p>Không tìm thấy chiến dịch nào.</p>
+        ) : safeCampaigns.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 space-y-3">
+            <BellRing className="w-12 h-12 mx-auto text-slate-300" />
+            <p className="font-medium text-slate-600 dark:text-slate-300">Không tìm thấy chiến dịch nào.</p>
+            <p className="text-xs text-slate-400">Bạn có thể tạo thông báo mới để gửi tức thì hoặc lên lịch tự động.</p>
+            <Link href="/dashboard/notifications/create" className="inline-block mt-2">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Plus className="w-3.5 h-3.5" /> Tạo chiến dịch mới
+              </Button>
+            </Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -142,46 +164,68 @@ export default function NotificationCampaignsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {campaigns.map((camp) => (
-                  <tr key={camp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-800 dark:text-white">{camp.title}</p>
-                      <p className="text-xs text-slate-500 truncate max-w-[200px] mt-1">{camp.content}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold ${getTargetTypeColor(camp.targetType)}`}>
-                        {camp.targetType}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(camp.status)} border-current/20 flex items-center w-fit gap-1.5`}>
-                        {camp.status === 'COMPLETED' ? <CheckCircle2 className="w-3 h-3" /> : null}
-                        {camp.status === 'SCHEDULED' ? <Clock className="w-3 h-3" /> : null}
-                        {getStatusText(camp.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {camp.scheduledAt ? new Date(camp.scheduledAt).toLocaleString('vi-VN') : 'Gửi ngay'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-full bg-slate-200 rounded-full h-2 max-w-[100px]">
-                          <div 
-                            className="bg-emerald-500 h-2 rounded-full" 
-                            style={{ width: `${camp.totalRecipients ? Math.round((camp.successfulDeliveries / camp.totalRecipients) * 100) : 0}%` }}
-                          ></div>
+                {safeCampaigns.map((camp) => {
+                  const total = camp.totalRecipients || 0;
+                  const sent = camp.sentCount || 0;
+                  const percent = total > 0 ? Math.min(100, Math.round((sent / total) * 100)) : 0;
+                  const isScheduled = camp.status === 'SCHEDULED';
+
+                  return (
+                    <tr key={camp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="font-semibold text-slate-800 dark:text-white">{camp.title}</p>
+                        <p className="text-xs text-slate-500 truncate max-w-[280px] mt-1">{camp.message}</p>
+                        {camp.createdBy?.fullName && (
+                          <p className="text-[11px] text-slate-400 mt-1">Tạo bởi: {camp.createdBy.fullName}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold ${getTargetTypeColor(camp.targetAudience)}`}>
+                          {camp.targetAudience}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(camp.status)} border-current/20 flex items-center w-fit gap-1.5`}>
+                          {camp.status === 'COMPLETED' ? <CheckCircle2 className="w-3 h-3" /> : null}
+                          {camp.status === 'SCHEDULED' ? <Clock className="w-3 h-3" /> : null}
+                          {camp.status === 'CANCELLED' || camp.status === 'FAILED' ? <XCircle className="w-3 h-3" /> : null}
+                          {getStatusText(camp.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {camp.scheduledAt && !isNaN(new Date(camp.scheduledAt).getTime())
+                          ? new Date(camp.scheduledAt).toLocaleString('vi-VN')
+                          : 'Gửi ngay'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-full bg-slate-200 rounded-full h-2 max-w-[100px] overflow-hidden">
+                            <div 
+                              className="bg-emerald-500 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${percent}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-slate-500 font-medium">{sent}/{total}</span>
                         </div>
-                        <span className="text-xs text-slate-500">{camp.successfulDeliveries}/{camp.totalRecipients}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {/* View detail button could go here */}
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Chi tiết (Chưa hỗ trợ)">
-                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {isScheduled && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            disabled={cancellingId === camp.id}
+                            onClick={() => handleCancelCampaign(camp.id, camp.title)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 text-xs h-8 gap-1"
+                            title="Hủy chiến dịch đã lên lịch"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            {cancellingId === camp.id ? 'Đang hủy...' : 'Hủy'}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -191,11 +235,25 @@ export default function NotificationCampaignsPage() {
       {meta && meta.totalPages > 1 && (
         <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
           <span className="text-sm text-slate-500">
-            Hiển thị trang {meta.page} / {meta.totalPages}
+            Hiển thị trang {meta.page} / {meta.totalPages} ({meta.total} chiến dịch)
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={meta.page <= 1} onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}>Trang trước</Button>
-            <Button variant="outline" size="sm" disabled={meta.page >= meta.totalPages} onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}>Trang sau</Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={filter.page <= 1}
+              onClick={() => setFilter(f => ({ ...f, page: f.page - 1 }))}
+            >
+              Trang trước
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={filter.page >= meta.totalPages}
+              onClick={() => setFilter(f => ({ ...f, page: f.page + 1 }))}
+            >
+              Trang sau
+            </Button>
           </div>
         </div>
       )}

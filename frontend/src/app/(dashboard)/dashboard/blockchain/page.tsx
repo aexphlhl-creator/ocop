@@ -95,7 +95,8 @@ function formatDuration(ms?: number | null) {
 
 function shortHash(value?: string | null) {
   if (!value) return '-';
-  return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
+  const clean = value.startsWith('demo-') ? '0x' + value.slice(5) : value;
+  return clean.length > 18 ? `${clean.slice(0, 10)}...${clean.slice(-6)}` : clean;
 }
 
 function StatCard({ title, value, icon, tone }: { title: string; value: React.ReactNode; icon: React.ReactNode; tone: string }) {
@@ -202,7 +203,7 @@ export default function BlockchainDashboardPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={dashboard?.charts?.statusPie ?? []} dataKey="count" nameKey="status" innerRadius={58} outerRadius={92} paddingAngle={3}>
-                      {(dashboard?.charts?.statusPie ?? []).map((entry: any) => <Cell key={entry.status} fill={STATUS_COLORS[entry.status] ?? '#94a3b8'} />)}
+                      {(dashboard?.charts?.statusPie ?? []).map((entry: { status: string }) => <Cell key={entry.status} fill={STATUS_COLORS[entry.status] ?? '#94a3b8'} />)}
                     </Pie>
                     <Tooltip />
                   </PieChart>

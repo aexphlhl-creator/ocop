@@ -43,7 +43,10 @@ export class AppController {
     const uptime = process.uptime();
 
     return {
-      status: databaseStatus === 'connected' && redisStatus === 'connected' ? 'ok' : 'error',
+      status:
+        databaseStatus === 'connected' && redisStatus === 'connected'
+          ? 'ok'
+          : 'error',
       database: databaseStatus,
       redis: redisStatus,
       uptime: `${Math.floor(uptime)}s`,

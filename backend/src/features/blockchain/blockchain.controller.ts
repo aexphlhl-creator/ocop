@@ -1,5 +1,18 @@
-import { Controller, Get, NotFoundException, Param, Query, UseGuards , ParseUUIDPipe} from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RoleName } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -43,7 +56,9 @@ export class BlockchainController {
   }
 
   @Get('records')
-  @ApiOperation({ summary: 'Danh sách blockchain records có filter và phân trang' })
+  @ApiOperation({
+    summary: 'Danh sách blockchain records có filter và phân trang',
+  })
   async getBlockchainRecords(@Query() query: GetBlockchainRecordsQueryDto) {
     return this.blockchainService.findRecords(query);
   }
@@ -57,7 +72,9 @@ export class BlockchainController {
   @Get(':productId')
   @ApiOperation({ summary: 'Lấy danh sách sổ cái Blockchain của sản phẩm' })
   @ApiResponse({ status: 200, description: 'Danh sách các block' })
-  async getProductBlockchain(@Param('productId', ParseUUIDPipe) productId: string) {
+  async getProductBlockchain(
+    @Param('productId', ParseUUIDPipe) productId: string,
+  ) {
     const blocks = await this.blockchainService.getBlockchainHistory(productId);
     return { data: blocks };
   }

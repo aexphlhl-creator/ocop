@@ -1,5 +1,17 @@
-import { Controller, Get, Patch, Param, UseGuards , ParseUUIDPipe} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -28,7 +40,10 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @ApiOperation({ summary: 'Đánh dấu 1 thông báo là đã đọc' })
-  async markAsRead(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
+  async markAsRead(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     const data = await this.notificationsService.markAsRead(id, user.id);
     return { data, message: 'Đã đánh dấu đã đọc' };
   }

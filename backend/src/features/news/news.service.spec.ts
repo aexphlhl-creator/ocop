@@ -7,8 +7,20 @@ import { NotFoundException } from '@nestjs/common';
 
 describe('NewsService', () => {
   let service: NewsService;
-  let repository: jest.Mocked<Partial<NewsRepository>>;
-  let redisService: jest.Mocked<Partial<RedisService>>;
+  let repository: jest.Mocked<
+    Pick<
+      NewsRepository,
+      | 'findBySlug'
+      | 'findById'
+      | 'create'
+      | 'update'
+      | 'softDelete'
+      | 'findAndCount'
+    >
+  >;
+  let redisService: jest.Mocked<
+    Pick<RedisService, 'get' | 'set' | 'getClient'>
+  >;
 
   const mockAdminUser = {
     id: 'admin-uuid',
@@ -17,6 +29,7 @@ describe('NewsService', () => {
     phone: '0123',
     role: RoleName.ADMIN,
     isActive: true,
+    mustChangePassword: false,
     createdAt: new Date(),
   };
 
@@ -27,7 +40,15 @@ describe('NewsService', () => {
     content: 'Chi tiet...',
     thumbnail: 'thumbnail.png',
     status: NewsStatus.DRAFT,
-    author: { id: 'admin-uuid' },
+    author: {
+      id: 'admin-uuid',
+      email: 'admin@example.com',
+      fullName: 'Admin Name',
+    },
+    authorId: 'admin-uuid',
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
 
   beforeEach(async () => {
@@ -49,7 +70,7 @@ describe('NewsService', () => {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
       getClient: jest.fn().mockReturnValue(redisClientMock),
-    } as any;
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,7 +90,7 @@ describe('NewsService', () => {
   describe('create', () => {
     it('should create successfully', async () => {
       repository.findBySlug.mockResolvedValue(null);
-      repository.create.mockResolvedValue(mockNews as any);
+      repository.create.mockResolvedValue(mockNews);
 
       const result = await service.create(
         {
@@ -88,13 +109,15 @@ describe('NewsService', () => {
 
   describe('findOneBySlug', () => {
     it('should throw NotFoundException if draft is requested by visitor', async () => {
-      repository.findBySlug.mockResolvedValue(mockNews as any);
+      repository.findBySlug.mockResolvedValue(mockNews);
 
-      await expect(service.findOneBySlug('ocop-2026', null)).rejects.toThrow(NotFoundException);
+      await expect(service.findOneBySlug('ocop-2026', null)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should return draft successfully if requested by admin', async () => {
-      repository.findBySlug.mockResolvedValue(mockNews as any);
+      repository.findBySlug.mockResolvedValue(mockNews);
 
       const result = await service.findOneBySlug('ocop-2026', mockAdminUser);
       expect(result.id).toBe('news-uuid');

@@ -1,7 +1,10 @@
 'use client';
 
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
+import { escapeHtml } from '@/utils/escape-html';
 import 'leaflet/dist/leaflet.css';
 import { api } from '../../services/api';
 import { useThemeStore } from '../../stores/theme.store';
@@ -26,6 +29,9 @@ interface Ward {
   provinceId: string;
   latitude: number;
   longitude: number;
+  description?: string;
+  bounds?: L.LatLngBoundsExpression;
+  geojsonPath?: string;
 }
 
 interface Product {
@@ -39,7 +45,12 @@ interface Product {
   wardId?: string;
   ocopLevel: { level: number; title: string };
   category: { name: string };
-  business: { name: string; phone?: string; address: string };
+  seller: {
+    id: string;
+    fullName: string;
+    phone?: string;
+    sellerProfile?: { displayName: string; phone?: string; address?: string } | null;
+  };
   description?: string;
   images?: { imageUrl: string; isPrimary: boolean }[];
 }
@@ -49,6 +60,48 @@ interface Product {
 const selectCls =
   'flex h-10 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer appearance-none';
 
+export type MapStyleType = 'standard' | 'terrain' | 'satellite';
+
+interface MapStyleConfig {
+  id: MapStyleType;
+  name: string;
+  icon: string;
+  url: string;
+  subdomains: string[];
+  maxZoom: number;
+  attribution: string;
+}
+
+const MAP_STYLES: Record<MapStyleType, MapStyleConfig> = {
+  standard: {
+    id: 'standard',
+    name: 'Đường sá',
+    icon: '🗺️',
+    url: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 20,
+    attribution: '&copy; Google Maps',
+  },
+  terrain: {
+    id: 'terrain',
+    name: 'Địa hình',
+    icon: '⛰️',
+    url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 20,
+    attribution: '&copy; Google Maps',
+  },
+  satellite: {
+    id: 'satellite',
+    name: 'Vệ tinh',
+    icon: '🛰️',
+    url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 20,
+    attribution: '&copy; Google Maps',
+  },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function OcopMap() {
@@ -56,7 +109,7 @@ export default function OcopMap() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
+  const wardMarkerRef = useRef<L.Marker | null>(null);
   const markerGroupRef = useRef<L.FeatureGroup | null>(null);
 
   // ── Data states ──────────────────────────────────────────────────────────
@@ -64,7 +117,8 @@ export default function OcopMap() {
   const [wards, setWards] = useState<Ward[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
-  // ── Filter states ────────────────────────────────────────────────────────
+  // ── Filter & Display states ──────────────────────────────────────────────
+  const [mapStyle, setMapStyle] = useState<MapStyleType>('standard');
   const [selectedProvinceId, setSelectedProvinceId] = useState('');
   const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
   const [selectedWardId, setSelectedWardId] = useState('');
@@ -74,7 +128,6 @@ export default function OcopMap() {
 
   // ── UI states ────────────────────────────────────────────────────────────
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isLoadingGeoJson, setIsLoadingGeoJson] = useState(false);
   const [isLoadingWards, setIsLoadingWards] = useState(false);
 
   // ─── Init Map ──────────────────────────────────────────────────────────────
@@ -99,6 +152,10 @@ export default function OcopMap() {
     fetchProducts();
 
     return () => {
+      if (wardMarkerRef.current) {
+        wardMarkerRef.current.remove();
+        wardMarkerRef.current = null;
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -106,24 +163,27 @@ export default function OcopMap() {
     };
   }, []);
 
-  // ─── Tile layer sync with theme ────────────────────────────────────────────
+  // ─── Tile layer sync with mapStyle and theme ──────────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
     if (tileLayerRef.current) tileLayerRef.current.remove();
 
-    const url =
-      theme === 'dark'
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    const config = MAP_STYLES[mapStyle] || MAP_STYLES.standard;
+    const isDark = theme === 'dark' && mapStyle === 'standard';
 
-    tileLayerRef.current = L.tileLayer(url, {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    }).addTo(mapRef.current);
-  }, [theme]);
+    const layer = L.tileLayer(config.url, {
+      attribution: config.attribution,
+      subdomains: config.subdomains,
+      maxZoom: config.maxZoom,
+      className: isDark ? 'map-tiles-dark' : '',
+    });
+
+    tileLayerRef.current = layer.addTo(mapRef.current);
+  }, [mapStyle, theme]);
 
   // ─── API calls ────────────────────────────────────────────────────────────
 
-  const fetchProvinces = async () => {
+  async function fetchProvinces() {
     try {
       const res = await api.get('/api/v1/provinces');
       setProvinces(res.data.data || []);
@@ -132,9 +192,9 @@ export default function OcopMap() {
     }
   };
 
-  const fetchProducts = async () => {
+  async function fetchProducts() {
     try {
-      const res = await api.get('/api/v1/products?limit=500&status=APPROVED');
+      const res = await api.get('/api/v1/products?limit=100&status=APPROVED');
       setProducts(res.data.data || []);
     } catch (err) {
       console.error('Lỗi tải sản phẩm:', err);
@@ -145,66 +205,39 @@ export default function OcopMap() {
     if (!provinceId) { setWards([]); return; }
     setIsLoadingWards(true);
     try {
-      const res = await api.get(`/api/v1/wards?provinceId=${provinceId}&limit=200`);
-      setWards(res.data.data || []);
+      // Backend cho phép tải tới 500 xã phường mỗi tỉnh
+      const res = await api.get(`/api/v1/wards?provinceId=${provinceId}&limit=500`);
+      const items = Array.isArray(res.data?.data)
+        ? res.data.data
+        : (res.data?.data?.items || res.data?.items || []);
+      setWards(items);
     } catch (err) {
-      console.error('Lỗi tải xã phường:', err);
+      console.error('Lỗi tải xã phường với limit=500, thử lại limit=100:', err);
+      try {
+        const fallbackRes = await api.get(`/api/v1/wards?provinceId=${provinceId}&limit=100`);
+        const items = Array.isArray(fallbackRes.data?.data)
+          ? fallbackRes.data.data
+          : (fallbackRes.data?.data?.items || fallbackRes.data?.items || []);
+        setWards(items);
+      } catch (e) {
+        console.error('Lỗi fallback xã phường:', e);
+        setWards([]);
+      }
     } finally {
       setIsLoadingWards(false);
     }
   }, []);
 
-  // ─── GeoJSON boundary ─────────────────────────────────────────────────────
-
-  const drawProvinceBoundary = async (code: string) => {
-    if (!mapRef.current) return;
-    if (geoJsonLayerRef.current) {
-      geoJsonLayerRef.current.remove();
-      geoJsonLayerRef.current = null;
-    }
-    if (!code) return;
-
-    setIsLoadingGeoJson(true);
-    try {
-      const res = await api.get(`/api/v1/provinces/${code}/geojson`);
-      const geojson = res.data.data;
-      if (!mapRef.current) return;
-
-      const geoLayer = L.geoJSON(geojson, {
-        style: {
-          color: '#10b981',
-          weight: 2,
-          opacity: 0.8,
-          fillColor: '#10b981',
-          fillOpacity: theme === 'dark' ? 0.08 : 0.04,
-        },
-        onEachFeature: (_, layer) => {
-          layer.on({
-            mouseover: (e) => e.target.setStyle({ fillOpacity: theme === 'dark' ? 0.15 : 0.08, weight: 3 }),
-            mouseout:  (e) => e.target.setStyle({ fillOpacity: theme === 'dark' ? 0.08 : 0.04, weight: 2 }),
-          });
-        },
-      }).addTo(mapRef.current);
-
-      geoJsonLayerRef.current = geoLayer;
-      mapRef.current.fitBounds(geoLayer.getBounds(), { padding: [20, 20] });
-    } catch (err) {
-      console.error('Không tìm thấy GeoJSON tỉnh:', err);
-    } finally {
-      setIsLoadingGeoJson(false);
-    }
-  };
-
-  // ─── Marker icon ──────────────────────────────────────────────────────────
+  // ─── Marker helpers ───────────────────────────────────────────────────────
 
   const createMarkerIcon = (stars: number) => {
-    const cls =
-      stars === 5 ? 'bg-emerald-500 ring-emerald-300'
-      : stars === 4 ? 'bg-amber-500 ring-amber-300'
-      : 'bg-blue-500 ring-blue-300';
+    // Màu cờ Việt Nam: Đỏ (Background) và Vàng (Ngôi sao)
+    const bg = '#DA251D'; // Đỏ cờ Việt Nam
+    const ring = '#FCD34D'; // Viền vàng nhạt
+    const textColor = '#FFFF00'; // Vàng cờ Việt Nam
 
     return L.divIcon({
-      html: `<div class="flex items-center justify-center w-7 h-7 rounded-full ${cls} text-white font-extrabold text-[10px] ring-4 shadow-md">${stars}★</div>`,
+      html: `<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background-color:${bg};box-shadow:0 0 0 3px ${ring}, 0 4px 6px -1px rgba(0,0,0,0.1);color:${textColor};font-weight:900;font-size:11px;text-shadow: 0px 1px 2px rgba(0,0,0,0.5);">${stars}★</div>`,
       className: 'custom-ocop-marker',
       iconSize: [28, 28],
       iconAnchor: [14, 14],
@@ -218,14 +251,14 @@ export default function OcopMap() {
     const matchSearch =
       !q ||
       p.name.toLowerCase().includes(q) ||
-      p.business?.name?.toLowerCase().includes(q);
+      (p.seller?.sellerProfile?.displayName ?? p.seller?.fullName ?? '').toLowerCase().includes(q);
 
     // Lọc theo tỉnh (so sánh provinceId nếu có, fallback address)
     const matchProvince = !selectedProvinceId
       ? true
       : p.provinceId
         ? p.provinceId === selectedProvinceId
-        : p.business?.address
+        : p.seller?.sellerProfile?.address
             ?.toLowerCase()
             .includes(
               (provinces.find((pr) => pr.id === selectedProvinceId)?.name || '').toLowerCase()
@@ -244,6 +277,7 @@ export default function OcopMap() {
 
   useEffect(() => {
     if (!mapRef.current || !markerGroupRef.current) return;
+    console.log('[OcopMap] Sync markers running. Products:', filteredProducts.length, 'Provinces:', provinces.length);
     markerGroupRef.current.clearLayers();
 
     let mode = 1;
@@ -259,6 +293,7 @@ export default function OcopMap() {
     }
 
     if (mode === 1) {
+      console.log('[OcopMap] Mode 1: Provinces');
       // Cấp độ 1: Tỉnh / Thành phố
       const provinceGroups = new Map<string, { count: number; province: Province }>();
       filteredProducts.forEach((p) => {
@@ -274,22 +309,24 @@ export default function OcopMap() {
         }
       });
 
+      console.log('[OcopMap] Province groups found:', provinceGroups.size);
       provinceGroups.forEach((group) => {
         const marker = L.marker([group.province.latitude, group.province.longitude], {
           icon: L.divIcon({
-            html: `<div class="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 ring-4 ring-emerald-300 text-white font-extrabold text-xs shadow-lg transform transition-transform hover:scale-110"><div class="flex flex-col items-center leading-none"><span>${group.count}</span><span class="text-[7px] font-bold mt-0.5">Sản phẩm</span></div></div>`,
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background-color:#10B981;box-shadow:0 0 0 4px #6EE7B7, 0 10px 15px -3px rgba(0,0,0,0.1);color:white;font-weight:800;font-size:12px;cursor:pointer;"><div style="display:flex;flex-direction:column;align-items:center;line-height:1;"><span>${group.count}</span><span style="font-size:7px;font-weight:bold;margin-top:2px;">Sản phẩm</span></div></div>`,
             className: 'custom-cluster-marker',
             iconSize: [40, 40],
             iconAnchor: [20, 20],
           }),
         });
-        marker.bindTooltip(`<b>${group.province.name}</b><br/>${group.count} sản phẩm`, { direction: 'top', offset: [0, -20] });
+        marker.bindTooltip(`<b>${escapeHtml(group.province.name)}</b><br/>${group.count} sản phẩm`, { direction: 'top', offset: [0, -20] });
         marker.on('click', () => {
           handleProvinceChange(group.province.id);
         });
         markerGroupRef.current?.addLayer(marker);
       });
     } else if (mode === 2) {
+      console.log('[OcopMap] Mode 2: Wards');
       // Cấp độ 2: Xã / Phường
       const wardGroups = new Map<string, { count: number; lat: number; lng: number; wardName: string }>();
       
@@ -316,22 +353,23 @@ export default function OcopMap() {
               count: 1,
               lat: p.latitude,
               lng: p.longitude,
-              wardName: p.business?.address || 'Khu vực',
+              wardName: p.seller?.sellerProfile?.address || 'Khu vực',
             });
           }
         }
       });
 
+      console.log('[OcopMap] Ward groups found:', wardGroups.size);
       wardGroups.forEach((group, key) => {
         const marker = L.marker([group.lat, group.lng], {
           icon: L.divIcon({
-            html: `<div class="flex items-center justify-center w-8 h-8 rounded-full ${group.count > 0 ? 'bg-amber-500 ring-amber-300' : 'bg-slate-400 ring-slate-200'} ring-4 text-white font-extrabold text-[10px] shadow-lg transform transition-transform hover:scale-110">${group.count}</div>`,
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background-color:${group.count > 0 ? '#F59E0B' : '#94A3B8'};box-shadow:0 0 0 4px ${group.count > 0 ? '#FCD34D' : '#E2E8F0'}, 0 10px 15px -3px rgba(0,0,0,0.1);color:white;font-weight:800;font-size:10px;cursor:pointer;">${group.count}</div>`,
             className: 'custom-cluster-marker',
             iconSize: [32, 32],
             iconAnchor: [16, 16],
           }),
         });
-        marker.bindTooltip(`<b>${group.wardName}</b><br/>${group.count} sản phẩm`, { direction: 'top', offset: [0, -16] });
+        marker.bindTooltip(`<b>${escapeHtml(group.wardName)}</b><br/>${group.count} sản phẩm`, { direction: 'top', offset: [0, -16] });
         marker.on('click', () => {
           if (key !== 'unknown') {
             handleWardChange(key);
@@ -342,7 +380,7 @@ export default function OcopMap() {
         markerGroupRef.current?.addLayer(marker);
       });
     } else {
-      // Cấp độ 3: Từng sản phẩm
+      console.log('[OcopMap] Mode 3: Products');
       filteredProducts.forEach((product) => {
         if (!product.latitude || !product.longitude) return;
 
@@ -352,12 +390,12 @@ export default function OcopMap() {
 
         marker.bindPopup(`
           <div class="p-2 flex flex-col gap-1.5 font-sans min-w-[200px]">
-            <h4 class="font-bold text-sm text-slate-800">${product.name}</h4>
-            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 w-fit rounded-full">${product.category?.name}</span>
-            <div class="text-xs text-slate-500 font-semibold mt-1">Đơn giá: <span class="text-red-500">${product.price.toLocaleString('vi-VN')}đ / ${product.unit}</span></div>
+            <h4 class="font-bold text-sm text-slate-800">${escapeHtml(product.name)}</h4>
+            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 w-fit rounded-full">${escapeHtml(product.category?.name)}</span>
+            <div class="text-xs text-slate-500 font-semibold mt-1">Đơn giá: <span class="text-red-500">${product.price.toLocaleString('vi-VN')}đ / ${escapeHtml(product.unit)}</span></div>
             <div class="text-[11px] text-slate-400 border-t border-slate-100 pt-1.5 mt-1.5 flex flex-col gap-0.5">
-              <div class="font-bold text-slate-600">${product.business?.name}</div>
-              <div>${product.business?.address}</div>
+              <div class="font-bold text-slate-600">${escapeHtml(product.seller?.sellerProfile?.displayName ?? product.seller?.fullName ?? '')}</div>
+              <div>${escapeHtml(product.seller?.sellerProfile?.address ?? '')}</div>
             </div>
           </div>
         `);
@@ -373,7 +411,7 @@ export default function OcopMap() {
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  const handleProvinceChange = (id: string) => {
+  function handleProvinceChange(id: string) {
     const province = provinces.find((p) => p.id === id);
     setSelectedProvinceId(id);
     setSelectedProvinceCode(province?.code || '');
@@ -381,35 +419,125 @@ export default function OcopMap() {
     setSelectedProduct(null);
     setWards([]);
 
+    // Xóa marker tâm xã cũ nếu có
+    if (wardMarkerRef.current) {
+      wardMarkerRef.current.remove();
+      wardMarkerRef.current = null;
+    }
+
     if (id) {
       fetchWards(id);
-      drawProvinceBoundary(province?.code || '');
-    } else {
-      if (geoJsonLayerRef.current) {
-        geoJsonLayerRef.current.remove();
-        geoJsonLayerRef.current = null;
+      if (province && province.latitude && province.longitude && mapRef.current) {
+        mapRef.current.flyTo([province.latitude, province.longitude], 9, {
+          duration: 1.2,
+        });
       }
-      mapRef.current?.setView([16.0, 108.0], 6);
+    } else {
+      mapRef.current?.flyTo([16.0, 108.0], 6, { duration: 1.0 });
     }
   };
 
-  const handleWardChange = (wardId: string) => {
+  function handleWardChange(wardId: string) {
     setSelectedWardId(wardId);
     setSelectedProduct(null);
 
+    // Xóa marker tâm xã cũ nếu có
+    if (wardMarkerRef.current) {
+      wardMarkerRef.current.remove();
+      wardMarkerRef.current = null;
+    }
+
     if (wardId) {
-      // Zoom vào xã đó nếu có sản phẩm match
-      const wardProducts = products.filter((p) => p.wardId === wardId);
-      if (wardProducts.length > 0 && mapRef.current) {
-        const latlngs = wardProducts
-          .filter((p) => p.latitude && p.longitude)
-          .map((p) => [p.latitude, p.longitude] as [number, number]);
-        if (latlngs.length > 0) {
-          mapRef.current.fitBounds(L.latLngBounds(latlngs), { padding: [60, 60], maxZoom: 14 });
+      const ward = wards.find((w) => w.id === wardId);
+      if (ward && ward.latitude && ward.longitude && mapRef.current) {
+        // 1. Zoom thẳng mượt mà vào đúng vị trí trung tâm hành chính của xã đó
+        mapRef.current.flyTo([ward.latitude, ward.longitude], 14, {
+          duration: 1.2,
+          easeLinearity: 0.25,
+        });
+
+        // 2. Tạo Marker định vị nổi bật với huy hiệu định danh trung tâm hành chính xã
+        const wardProductsCount = products.filter((p) => p.wardId === wardId).length;
+
+        const wardPinIcon = L.divIcon({
+          className: 'ward-pin-beacon',
+          iconSize: [200, 56],
+          iconAnchor: [100, 52],
+          html: `
+            <div style="position:relative;display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;">
+              <!-- Badge Name Tag -->
+              <div style="
+                background: linear-gradient(135deg, #059669, #047857);
+                color: white;
+                padding: 5px 12px;
+                border-radius: 9999px;
+                font-size: 12px;
+                font-weight: 800;
+                box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 2px rgba(255,255,255,0.95);
+                white-space: nowrap;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-bottom: 4px;
+                transform: translateZ(0);
+              ">
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background-color:#34d399;box-shadow:0 0 8px #34d399;"></span>
+                <span>${escapeHtml(ward.name)}</span>
+                ${wardProductsCount > 0 ? `<span style="background-color:rgba(255,255,255,0.25);padding:1px 6px;border-radius:8px;font-size:10px;">${wardProductsCount} OCOP</span>` : ''}
+              </div>
+
+              <!-- Pin Point & Beacon Ripple -->
+              <div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+                <!-- Animated Ripple -->
+                <div style="
+                  position: absolute;
+                  width: 32px;
+                  height: 32px;
+                  border-radius: 50%;
+                  background-color: rgba(16, 185, 129, 0.4);
+                  animation: ward-beacon-pulse 1.8s infinite ease-out;
+                "></div>
+                <!-- Pin dot -->
+                <div style="
+                  width: 14px;
+                  height: 14px;
+                  border-radius: 50%;
+                  background-color: #059669;
+                  border: 3px solid white;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+                "></div>
+              </div>
+            </div>
+          `,
+        });
+
+        const marker = L.marker([ward.latitude, ward.longitude], {
+          icon: wardPinIcon,
+          zIndexOffset: 1000,
+        }).addTo(mapRef.current);
+
+        marker.bindPopup(`
+          <div style="font-family:sans-serif;padding:6px 8px;min-width:200px;">
+            <div style="font-size:10px;font-weight:bold;color:#059669;text-transform:uppercase;margin-bottom:2px;">Trung tâm hành chính</div>
+            <div style="font-size:14px;font-weight:800;color:#0f172a;margin-bottom:4px;">${escapeHtml(ward.name)}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:6px;">${escapeHtml(ward.description || 'Chưa có mô tả địa bàn')}</div>
+            <div style="font-size:11px;font-weight:600;color:#059669;background-color:#ecfdf5;padding:4px 8px;border-radius:6px;display:inline-block;">
+              ⭐ ${wardProductsCount} sản phẩm OCOP được chứng nhận
+            </div>
+          </div>
+        `);
+
+        wardMarkerRef.current = marker;
+      }
+    } else {
+      // Khi chọn "Tất cả xã phường": zoom trở lại toàn cảnh tỉnh
+      if (selectedProvinceId && mapRef.current) {
+        const province = provinces.find((p) => p.id === selectedProvinceId);
+        if (province && province.latitude && province.longitude) {
+          mapRef.current.flyTo([province.latitude, province.longitude], 9, {
+            duration: 1.0,
+          });
         }
-      } else if (selectedProvinceId && mapRef.current && geoJsonLayerRef.current) {
-        // Zoom về bounds tỉnh nếu xã không có sản phẩm
-        mapRef.current.fitBounds(geoJsonLayerRef.current.getBounds(), { padding: [20, 20] });
       }
     }
   };
@@ -428,11 +556,11 @@ export default function OcopMap() {
     setSearchQuery('');
     setSelectedProduct(null);
     setWards([]);
-    if (geoJsonLayerRef.current) {
-      geoJsonLayerRef.current.remove();
-      geoJsonLayerRef.current = null;
+    if (wardMarkerRef.current) {
+      wardMarkerRef.current.remove();
+      wardMarkerRef.current = null;
     }
-    mapRef.current?.setView([16.0, 108.0], 6);
+    mapRef.current?.flyTo([16.0, 108.0], 6, { duration: 1.0 });
   };
 
   const hasFilters = selectedProvinceId || selectedWardId || selectedStars.length > 0 || searchQuery;
@@ -465,7 +593,7 @@ export default function OcopMap() {
         <SearchBox
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Tìm sản phẩm, doanh nghiệp..."
+          placeholder="Tìm sản phẩm, người bán..."
           className="max-w-none"
         />
 
@@ -496,32 +624,43 @@ export default function OcopMap() {
             </div>
           </div>
 
-          {/* Xã / Phường – chỉ hiện khi đã chọn tỉnh */}
-          {selectedProvinceId && (
-            <div className="flex flex-col gap-1.5">
+          {/* Xã / Phường / Thị trấn */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <span className="inline-flex items-center justify-center h-4 w-4 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[9px] font-black">2</span>
+                <span className="inline-flex items-center justify-center h-4 w-4 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-black">2</span>
                 Xã / Phường / Thị trấn
                 {isLoadingWards && <LoadingSpinner size="sm" className="ml-1" />}
               </label>
-              <div className="relative">
-                <select
-                  value={selectedWardId}
-                  onChange={(e) => handleWardChange(e.target.value)}
-                  disabled={isLoadingWards || wards.length === 0}
-                  className={selectCls}
-                >
-                  <option value="">
-                    {isLoadingWards ? 'Đang tải...' : wards.length === 0 ? 'Không có dữ liệu' : `Tất cả xã phường (${wards.length})`}
-                  </option>
-                  {wards.map((ward) => (
-                    <option key={ward.id} value={ward.id}>{ward.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              </div>
+              {selectedProvinceId && wards.length > 0 && (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                  {wards.length} xã/phường
+                </span>
+              )}
             </div>
-          )}
+            <div className="relative">
+              <select
+                value={selectedWardId}
+                onChange={(e) => handleWardChange(e.target.value)}
+                disabled={!selectedProvinceId || isLoadingWards}
+                className={`${selectCls} ${!selectedProvinceId ? 'opacity-60 cursor-not-allowed bg-slate-50 dark:bg-slate-900' : ''}`}
+              >
+                {!selectedProvinceId ? (
+                  <option value="">← Vui lòng chọn Tỉnh/Thành trước</option>
+                ) : (
+                  <>
+                    <option value="">
+                      {isLoadingWards ? 'Đang tải danh sách xã/phường...' : `Tất cả xã phường (${wards.length})`}
+                    </option>
+                    {wards.map((ward) => (
+                      <option key={ward.id} value={ward.id}>{ward.name}</option>
+                    ))}
+                  </>
+                )}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            </div>
+          </div>
         </div>
 
         {/* ── Xếp hạng sao ────────────────────────────────────────────── */}
@@ -568,7 +707,7 @@ export default function OcopMap() {
               {/* Image Section */}
               <div className="relative h-40 w-full bg-slate-100 dark:bg-slate-800">
                 {selectedProduct.images && selectedProduct.images.length > 0 ? (
-                  <img 
+                  <AssetImage 
                     src={selectedProduct.images.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))[0].imageUrl} 
                     alt={selectedProduct.name} 
                     className="w-full h-full object-cover" 
@@ -604,18 +743,18 @@ export default function OcopMap() {
                 <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <Store className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <span className="font-bold text-slate-700 dark:text-slate-200 truncate">{selectedProduct.business?.name}</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-200 truncate">{selectedProduct.seller?.sellerProfile?.displayName ?? selectedProduct.seller?.fullName}</span>
                   </div>
-                  {selectedProduct.business?.address && (
+                  {selectedProduct.seller?.sellerProfile?.address && (
                     <div className="flex items-start gap-2">
                       <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400 mt-0.5" />
-                      <span className="leading-snug">{selectedProduct.business.address}</span>
+                      <span className="leading-snug">{selectedProduct.seller.sellerProfile?.address}</span>
                     </div>
                   )}
-                  {selectedProduct.business?.phone && (
+                  {(selectedProduct.seller?.sellerProfile?.phone ?? selectedProduct.seller?.phone) && (
                     <div className="flex items-center gap-2">
                       <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span>{selectedProduct.business.phone}</span>
+                      <span>{selectedProduct.seller?.sellerProfile?.phone ?? selectedProduct.seller?.phone}</span>
                     </div>
                   )}
                 </div>
@@ -650,24 +789,38 @@ export default function OcopMap() {
       <div className="flex-grow rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden relative shadow-inner">
         <div ref={mapContainerRef} className="h-full w-full z-0" />
 
-        {/* Loading overlay */}
-        {isLoadingGeoJson && (
-          <div className="absolute inset-0 bg-slate-900/10 dark:bg-slate-950/20 backdrop-blur-[1px] z-20 flex items-center justify-center">
-            <div className="bg-white dark:bg-slate-900 px-4 py-2.5 rounded-full shadow-lg border border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs font-bold text-emerald-600">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
-              Đang vẽ ranh giới địa giới hành chính...
-            </div>
-          </div>
-        )}
+        {/* Map Style Switcher (Đường sá | Địa hình | Vệ tinh) */}
+        <div className="absolute top-3 right-3 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 p-1 rounded-2xl shadow-lg flex items-center gap-1">
+          {(['standard', 'terrain', 'satellite'] as MapStyleType[]).map((styleKey) => {
+            const item = MAP_STYLES[styleKey];
+            const isActive = mapStyle === styleKey;
+            return (
+              <button
+                key={styleKey}
+                onClick={() => setMapStyle(styleKey)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                }`}
+                title={`Chuyển sang chế độ ${item.name}`}
+              >
+                <span>{item.icon}</span>
+                <span className="hidden sm:inline">{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
 
         {/* Legend */}
         <div className="absolute bottom-5 left-5 z-10 bg-white/95 dark:bg-slate-900/95 border border-slate-100 dark:border-slate-800 p-3 rounded-xl shadow-lg flex flex-col gap-2 text-[10px] text-slate-500">
           <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[8px]">Phân loại bản đồ số</span>
-          <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /><span>OCOP 5 Sao (Đặc sản Quốc tế)</span></div>
-          <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" /><span>OCOP 4 Sao (Đặc sản Quốc gia)</span></div>
-          <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" /><span>OCOP 3 Sao (Đặc sản Địa phương)</span></div>
+          <div className="flex items-center gap-2"><div className="shrink-0" style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#DA251D', border: '1px solid #FCD34D', color: '#FFFF00', fontSize: '6px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>5★</div><span>OCOP 5 Sao (Đặc sản Quốc tế)</span></div>
+          <div className="flex items-center gap-2"><div className="shrink-0" style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#DA251D', border: '1px solid #FCD34D', color: '#FFFF00', fontSize: '6px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>4★</div><span>OCOP 4 Sao (Đặc sản Quốc gia)</span></div>
+          <div className="flex items-center gap-2"><div className="shrink-0" style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#DA251D', border: '1px solid #FCD34D', color: '#FFFF00', fontSize: '6px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>3★</div><span>OCOP 3 Sao (Đặc sản Địa phương)</span></div>
           <div className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-800 pt-1.5">
-            <span className="w-4 h-0.5 bg-emerald-500 shrink-0" /><span>Ranh giới hành chính tỉnh</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-200 dark:ring-emerald-800" />
+            <span>Định vị trung tâm hành chính xã</span>
           </div>
         </div>
 

@@ -3,9 +3,14 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  handleRequest(err: any, user: any) {
+  handleRequest<TUser>(err: unknown, user: TUser): TUser {
     if (err || !user) {
-      throw err || new UnauthorizedException('Phiên đăng nhập không hợp lệ hoặc đã hết hạn');
+      throw (
+        (err instanceof Error ? err : undefined) ||
+        new UnauthorizedException(
+          'Phiên đăng nhập không hợp lệ hoặc đã hết hạn',
+        )
+      );
     }
     return user;
   }

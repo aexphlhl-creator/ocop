@@ -23,7 +23,9 @@ const storageLogger = new Logger('CertificatesStorageProvider');
       useFactory: async (configService: ConfigService) => {
         const demoMode = configService.get<boolean>('DEMO_MODE', false);
         if (demoMode) {
-          storageLogger.log('[CertificatesStorageProvider] DEMO_MODE=true -> Skip MinIO provider initialization');
+          storageLogger.log(
+            '[CertificatesStorageProvider] DEMO_MODE=true -> Skip MinIO provider initialization',
+          );
           return new DemoStorageProvider();
         }
 

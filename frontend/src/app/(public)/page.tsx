@@ -1,5 +1,9 @@
 'use client';
 
+import type { Product, NewsArticle, Province, Ward } from '@/types/catalog';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -42,7 +46,7 @@ const stagger: Variants = {
 
 const STATS_CARDS = [
   { key: 'products', label: 'Sản phẩm OCOP', icon: ShoppingBag, image: '/images/stat_products.jpg' },
-  { key: 'businesses', label: 'Chủ thể sản xuất', icon: Store, image: '/images/stat_producers.jpg' },
+  { key: 'sellers', label: 'Người bán OCOP', icon: Store, image: '/images/stat_producers.jpg' },
   { key: 'provinces', label: 'Tỉnh thành', icon: Map, image: '/images/stat_provinces.jpg' },
   { key: 'categories', label: 'Ngành hàng', icon: Leaf, image: '/images/stat_categories.jpg' },
 ];
@@ -76,7 +80,7 @@ const CATEGORIES = [
 
 export default function HomePage() {
   const { data: stats, isLoading: isStatsLoading } = useStatisticsOverview();
-  const [selectedProvince, setSelectedProvince] = useState<any>(null);
+  const [selectedProvince, setSelectedProvince] = useState<Province | null>(null);
 
   const { data: provinces = [] } = useQuery({
     queryKey: ['homeProvinces'],
@@ -90,6 +94,7 @@ export default function HomePage() {
   const { data: wardsData = [] } = useQuery({
     queryKey: ['homeWards', selectedProvince?.id],
     queryFn: async () => {
+      if (!selectedProvince) return [];
       const res = await api.get(`/api/v1/wards?provinceId=${selectedProvince.id}&limit=12`);
       return res.data.data || [];
     },
@@ -117,9 +122,9 @@ export default function HomePage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const topProducts: any[] = topProductsData || [];
-  const newsList: any[] = newsData || [];
-  const displayedProvinces: any[] = provinces.slice(0, 12);
+  const topProducts: Product[] = topProductsData || [];
+  const newsList: NewsArticle[] = newsData || [];
+  const displayedProvinces: Province[] = provinces.slice(0, 12);
 
   return (
     <div className="flex flex-col overflow-hidden bg-background text-foreground font-sans">
@@ -194,7 +199,7 @@ export default function HomePage() {
               transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
               className="relative aspect-[4/5] w-full rounded-[2rem] overflow-hidden shadow-[0_20px_50px_-12px_rgba(16,185,129,0.3)] border border-white/50 ring-1 ring-black/5"
             >
-              <img
+              <AssetImage
                 src="https://images.unsplash.com/photo-1592424041795-5853bf686255?auto=format&fit=crop&w=800&q=80"
                 alt="Nông sản hữu cơ"
                 className="w-full h-full object-cover scale-105"
@@ -316,7 +321,7 @@ export default function HomePage() {
             {CATEGORIES.map((cat, index) => (
               <motion.div key={cat.id} variants={fadeUp} className={`group relative h-48 md:h-64 rounded-[2.5rem] border border-white/50 shadow-sm hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 overflow-hidden cursor-pointer flex flex-col justify-end p-8 bg-surface`}>
                 
-                <img 
+                <AssetImage 
                   src={cat.image} 
                   alt={cat.name} 
                   className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
@@ -372,7 +377,7 @@ export default function HomePage() {
               whileInView="show"
               viewport={{ once: true, margin: '-40px' }}
             >
-              {topProducts.map((product: any) => (
+              {topProducts.map((product: Product) => (
                 <motion.div key={product.id} variants={fadeUp}>
                   <ProductCard product={product} />
                 </motion.div>
@@ -411,7 +416,7 @@ export default function HomePage() {
               </span> từ trang trại.
             </motion.h2>
             <motion.p variants={fadeUp} className="mt-6 text-base leading-relaxed text-muted md:text-lg">
-              Hồ sơ truy xuất tổng hợp từ vùng trồng, doanh nghiệp, lô hàng, nhà kho cho tới các chứng nhận an toàn thực phẩm. Giao diện trực quan giúp khách hàng dễ dàng theo dõi và hoàn toàn an tâm.
+              Hồ sơ truy xuất tổng hợp từ vùng trồng, người bán, lô hàng, nhà kho cho tới các chứng nhận an toàn thực phẩm. Giao diện trực quan giúp khách hàng dễ dàng theo dõi và hoàn toàn an tâm.
             </motion.p>
             <motion.div variants={fadeUp} className="mt-8 flex flex-wrap gap-2 mb-10">
               {['Sản phẩm', 'Lô hàng', 'Nhà kho', 'Nhật ký', 'Chứng nhận'].map((item) => (
@@ -422,7 +427,7 @@ export default function HomePage() {
             </motion.div>
 
             <motion.div variants={fadeUp} className="relative aspect-video w-full max-w-sm rounded-3xl overflow-hidden shadow-lg border border-white/50 hidden lg:block">
-              <img 
+              <AssetImage 
                 src="https://images.unsplash.com/photo-1590402494587-44b71d7772f6?auto=format&fit=crop&w=800&q=80" 
                 alt="Người nông dân" 
                 className="w-full h-full object-cover"
@@ -505,7 +510,7 @@ export default function HomePage() {
             whileInView="show"
             viewport={{ once: true }}
           >
-            {displayedProvinces.map((province: any) => (
+            {displayedProvinces.map((province: Province) => (
               <motion.button
                 key={province.id}
                 variants={fadeUp}
@@ -543,7 +548,7 @@ export default function HomePage() {
                       <Search className="h-5 w-5 text-muted" />
                     </div>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                      {wardsData.map((ward: any) => (
+                      {wardsData.map((ward: Ward) => (
                         <Link
                           key={ward.id}
                           href={`/products?provinceId=${selectedProvince.id}&wardId=${ward.id}`}
@@ -577,12 +582,12 @@ export default function HomePage() {
 
           {newsList.length > 0 ? (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              {newsList.map((article: any) => (
+              {newsList.map((article: NewsArticle) => (
                 <Link key={article.id} href={`/news/${article.slug}`} className="group flex flex-col bg-surface/60 backdrop-blur-xl rounded-[2rem] border border-white/60 shadow-sm hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 overflow-hidden relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10"></div>
                   <div className="relative aspect-[16/10] overflow-hidden bg-muted-bg rounded-t-[2rem]">
-                    <img
-                      src={article.thumbnailUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80'}
+                    <AssetImage
+                      src={article.thumbnail || article.thumbnailUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80'}
                       alt={article.title}
                       className="h-full w-full object-cover scale-105 group-hover:scale-110 transition-transform duration-700 ease-in-out"
                     />
@@ -628,7 +633,7 @@ export default function HomePage() {
             className="overflow-hidden rounded-[3rem] p-8 text-center sm:p-16 relative shadow-[0_30px_60px_-15px_rgba(16,185,129,0.3)] border border-white/40"
           >
             {/* Background Image & Overlays */}
-            <img 
+            <AssetImage 
               src="https://images.unsplash.com/photo-1592424002621-e8d11c19b05c?auto=format&fit=crop&w=2000&q=80" 
               alt="Cánh đồng chè xanh" 
               className="absolute inset-0 w-full h-full object-cover scale-105"

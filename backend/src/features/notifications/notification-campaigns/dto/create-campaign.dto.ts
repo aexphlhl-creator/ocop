@@ -1,5 +1,12 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString } from 'class-validator';
-import { NotificationTarget } from '@prisma/client';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsObject,
+} from 'class-validator';
+import { NotificationTarget, Prisma } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCampaignDto {
@@ -15,7 +22,8 @@ export class CreateCampaignDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  targetDetails?: any;
+  @IsObject()
+  targetDetails?: Prisma.InputJsonObject;
 
   @ApiProperty()
   @IsString()

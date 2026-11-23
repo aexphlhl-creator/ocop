@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FaGithub, FaLinkedin, FaFacebook, FaInstagram } from 'react-icons/fa';
-import { Leaf, Mail, Phone } from 'lucide-react';
+import { Mail, Phone } from 'lucide-react';
+import { OcopLogo } from '../ui/ocop-logo';
 
 const footerLinks = [
   {
     heading: 'Khám phá',
     links: [
       { href: '/products', label: 'Sản phẩm OCOP' },
-      { href: '/businesses', label: 'Chủ thể OCOP' },
+      { href: '/shops', label: 'Gian hàng OCOP' },
+      { href: '/events', label: 'Sự kiện & Hội chợ' },
       { href: '/news', label: 'Tin tức' },
       { href: '/map', label: 'Bản đồ số' },
     ],
@@ -46,18 +48,15 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="md:col-span-2">
-            <Link href="/" className="flex items-center gap-2.5 group w-fit" aria-label="OCOP Việt Nam">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#16A34A] text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
-                <Leaf className="h-5 w-5 fill-white text-white" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-base font-bold text-slate-900 dark:text-white">OCOP Việt Nam</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Bản đồ số sản phẩm đặc sản</span>
-              </div>
+            <Link href="/" className="flex flex-col gap-2.5 group w-fit" aria-label="OCOP Việt Nam">
+              <OcopLogo size="lg" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Bản đồ số sản phẩm đặc sản Việt Nam
+              </span>
             </Link>
 
             <p className="mt-5 max-w-sm text-sm leading-7 text-slate-500 dark:text-slate-400">
-              Nền tảng kết nối sản phẩm OCOP, doanh nghiệp, hợp tác xã và người tiêu dùng trên
+              Nền tảng kết nối sản phẩm OCOP, người bán và người tiêu dùng trên
               toàn quốc. Số hóa hành trình nông sản Việt Nam.
             </p>
 

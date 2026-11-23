@@ -1,8 +1,14 @@
 'use client';
 
+import type { NewsArticle, QueryParams, PaginationMeta } from '@/types/catalog';
+
+import { getErrorMessage } from '@/utils/api-error';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
@@ -19,7 +25,7 @@ import { ConfirmDialog } from '../../../../components/ui/confirm-dialog';
 import { LoadingSpinner } from '../../../../components/ui/loading-spinner';
 import { EmptyState } from '../../../../components/ui/empty-state';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Newspaper, Calendar, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Newspaper, Calendar, Eye, EyeOff, Search } from 'lucide-react';
 
 const newsSchema = z.object({
   title: z.string().min(5, 'Tiêu đề phải dài ít nhất 5 ký tự'),
@@ -37,22 +43,34 @@ export default function DashboardNewsPage() {
 
   const [page, setPage] = useState(1);
   const limit = 8;
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingNews, setEditingNews] = useState<any>(null);
+  const [editingNews, setEditingNews] = useState<NewsArticle | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<NewsFormValues>({
+  const { register, handleSubmit, setValue, control, reset, formState: { errors } } = useForm<NewsFormValues>({
     resolver: zodResolver(newsSchema),
     defaultValues: { status: 'DRAFT' },
   });
 
-  const selectedStatus = watch('status');
+  const selectedStatus = useWatch({ control, name: 'status' });
 
-  const { data: newsData, isLoading } = useQuery({
-    queryKey: ['dashboardNews', page],
+  const { data: newsData, isLoading } = useQuery<{ items: NewsArticle[]; meta: PaginationMeta }>({
+    queryKey: ['dashboardNews', page, searchTerm, statusFilter],
     queryFn: async () => {
-      const res = await api.get('/api/v1/news', { params: { page, limit } });
-      return res.data.data;
+      const params: QueryParams = { page, limit };
+      if (searchTerm) params.keyword = searchTerm;
+      if (statusFilter !== 'ALL') params.status = statusFilter;
+      const res = await api.get('/api/v1/news', { params });
+      const raw = res.data;
+      const rawData = raw?.data;
+      const items = Array.isArray(rawData) ? rawData : (rawData?.items || raw?.items || []);
+      const meta = raw?.meta || rawData?.meta || {
+        totalPages: Math.ceil(items.length / limit) || 1,
+        totalItems: items.length,
+      };
+      return { items, meta };
     },
     enabled: !!user,
   });
@@ -60,15 +78,23 @@ export default function DashboardNewsPage() {
   const newsList = newsData?.items || [];
   const totalPages = newsData?.meta?.totalPages || 1;
 
+  const invalidateAllNews = () => {
+    queryClient.invalidateQueries({ queryKey: ['dashboardNews'] });
+    queryClient.invalidateQueries({ queryKey: ['homeNews'] });
+    queryClient.invalidateQueries({ queryKey: ['publicNewsList'] });
+    queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['statisticsOverview'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: (data: NewsFormValues) => api.post('/api/v1/news', data),
     onSuccess: () => {
       toast.success('Đăng bài viết thành công!');
-      queryClient.invalidateQueries({ queryKey: ['dashboardNews'] });
+      invalidateAllNews();
       setIsFormOpen(false);
       reset();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Không thể tạo bài viết'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Không thể tạo bài viết')),
   });
 
   const updateMutation = useMutation({
@@ -76,22 +102,22 @@ export default function DashboardNewsPage() {
       api.patch(`/api/v1/news/${id}`, data),
     onSuccess: () => {
       toast.success('Cập nhật bài viết thành công!');
-      queryClient.invalidateQueries({ queryKey: ['dashboardNews'] });
+      invalidateAllNews();
       setIsFormOpen(false);
       setEditingNews(null);
       reset();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Không thể cập nhật'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Không thể cập nhật')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/news/${id}`),
     onSuccess: () => {
       toast.success('Đã xóa bài viết');
-      queryClient.invalidateQueries({ queryKey: ['dashboardNews'] });
+      invalidateAllNews();
       setDeletingId(null);
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Không thể xóa'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Không thể xóa')),
   });
 
   useEffect(() => {
@@ -147,6 +173,40 @@ export default function DashboardNewsPage() {
         )}
       </motion.div>
 
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+            placeholder="Tìm theo tiêu đề hoặc nội dung..."
+            className="w-full pl-10 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] transition-all"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-100 dark:bg-slate-800/60 p-1 rounded-xl">
+          {[
+            { id: 'ALL', label: 'Tất cả' },
+            { id: 'PUBLISHED', label: 'Đã đăng' },
+            { id: 'DRAFT', label: 'Bản nháp' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => { if (tab.id === 'ALL' || tab.id === 'PUBLISHED' || tab.id === 'DRAFT') setStatusFilter(tab.id); setPage(1); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                statusFilter === tab.id
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Table */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -169,12 +229,12 @@ export default function DashboardNewsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {newsList.map((article: any) => (
+                  {newsList.map((article: NewsArticle) => (
                     <TableRow key={article.id}>
                       <TableCell>
                         <div className="flex items-center gap-2.5 max-w-[320px]">
                           {article.thumbnail ? (
-                            <img
+                            <AssetImage
                               src={article.thumbnail}
                               alt=""
                               className="h-9 w-14 rounded-lg object-cover shrink-0 bg-slate-100"
@@ -231,13 +291,19 @@ export default function DashboardNewsPage() {
         ) : (
           <EmptyState
             icon={<Newspaper className="h-8 w-8" />}
-            title="Chưa có bài viết nào"
-            description="Nhấn Viết bài mới để đăng tin tức OCOP đầu tiên."
-            action={isAdmin ? (
-              <Button variant="primary" size="sm" onClick={() => { setEditingNews(null); reset(); setIsFormOpen(true); }}>
-                <Plus className="h-4 w-4" /> Viết bài mới
-              </Button>
-            ) : undefined}
+            title={searchTerm || statusFilter !== 'ALL' ? 'Không tìm thấy bài viết phù hợp' : 'Chưa có bài viết nào'}
+            description={searchTerm || statusFilter !== 'ALL' ? 'Vui lòng thử lại với từ khóa hoặc trạng thái lọc khác.' : 'Nhấn Viết bài mới để đăng tin tức OCOP đầu tiên.'}
+            action={
+              searchTerm || statusFilter !== 'ALL' ? (
+                <Button variant="outline" size="sm" onClick={() => { setSearchTerm(''); setStatusFilter('ALL'); setPage(1); }}>
+                  Xóa bộ lọc
+                </Button>
+              ) : isAdmin ? (
+                <Button variant="primary" size="sm" onClick={() => { setEditingNews(null); reset(); setIsFormOpen(true); }}>
+                  <Plus className="h-4 w-4" /> Viết bài mới
+                </Button>
+              ) : undefined
+            }
           />
         )}
       </motion.div>

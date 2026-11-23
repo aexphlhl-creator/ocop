@@ -10,16 +10,14 @@ export class VouchersRepository {
     return this.prisma.voucher.create({ data });
   }
 
-  async findAll(businessId?: string) {
-    const where = businessId ? { OR: [{ businessId }, { businessId: null }] } : {};
+  async findAll(sellerId?: string) {
+    const where = sellerId ? { OR: [{ sellerId }, { sellerId: null }] } : {};
     return this.prisma.voucher.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        business: {
-          select: { name: true }
-        }
-      }
+        seller: { select: { id: true, fullName: true, sellerProfile: true } },
+      },
     });
   }
 
@@ -27,15 +25,43 @@ export class VouchersRepository {
     return this.prisma.voucher.findUnique({
       where: { code },
       include: {
-        business: true
-      }
+        seller: { include: { sellerProfile: true } },
+      },
     });
   }
 
   async incrementUsage(id: string) {
     return this.prisma.voucher.update({
       where: { id },
-      data: { usedCount: { increment: 1 } }
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
+  async findById(id: string) {
+    return this.prisma.voucher.findUnique({
+      where: { id },
+      include: {
+        seller: { include: { sellerProfile: true } },
+        _count: {
+          select: {
+            platformOrders: true,
+            shopOrders: true,
+          },
+        },
+      },
+    });
+  }
+
+  async delete(id: string) {
+    return this.prisma.voucher.delete({
+      where: { id },
+    });
+  }
+
+  async update(id: string, data: Prisma.VoucherUncheckedUpdateInput) {
+    return this.prisma.voucher.update({
+      where: { id },
+      data,
     });
   }
 }

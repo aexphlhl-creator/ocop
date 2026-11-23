@@ -5,7 +5,7 @@ export interface AuditEventParams {
   action: string;
   userId?: string;
   role?: string;
-  businessId?: string;
+  sellerId?: string;
   entity?: string;
   entityId?: string;
   ip?: string;
@@ -21,8 +21,8 @@ export class AuditService {
   constructor(private readonly cls: ClsService) {}
 
   logEvent(params: AuditEventParams) {
-    const reqId = this.cls.get('reqId');
-    
+    const reqId: unknown = this.cls.get('reqId');
+
     // Ghi log định dạng chuẩn JSON cho ELK
     this.logger.log({
       type: 'AUDIT',

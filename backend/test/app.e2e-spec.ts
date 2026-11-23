@@ -6,13 +6,15 @@ import { AppModule } from './../src/app.module';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
+  let moduleFixture: TestingModule;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+  beforeAll(async () => {
+    moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.enableShutdownHooks();
     await app.init();
   });
 
@@ -23,7 +25,12 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
-  afterEach(async () => {
-    await app.close();
+  afterAll(async () => {
+    if (app) {
+      await app.close();
+    }
+    if (moduleFixture) {
+      await moduleFixture.close();
+    }
   });
 });

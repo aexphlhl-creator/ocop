@@ -1,24 +1,49 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, IsUUID, IsNumber, Min, Max, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsNumber,
+  Min,
+  Max,
+  IsEnum,
+} from 'class-validator';
 import { WarehouseType } from '@prisma/client';
 
 export class CreateWarehouseDto {
+  @ApiPropertyOptional({
+    description: 'UUID tài khoản SELLER sở hữu kho; chỉ ADMIN cần truyền',
+  })
+  @IsUUID('4')
+  @IsOptional()
+  sellerId?: string;
+
   @ApiProperty({ example: 'Kho HTX Mật Ong Khánh Hòa', description: 'Tên kho' })
   @IsString()
   @IsNotEmpty({ message: 'Tên kho không được trống' })
   name: string;
 
-  @ApiProperty({ example: '123 Nguyễn Văn Linh, Đà Nẵng', description: 'Địa chỉ kho' })
+  @ApiProperty({
+    example: '123 Nguyễn Văn Linh, Đà Nẵng',
+    description: 'Địa chỉ kho',
+  })
   @IsNotEmpty({ message: 'Địa chỉ không được để trống' })
   @IsString()
   address: string;
 
-  @ApiPropertyOptional({ example: '123 Nguyễn Văn Linh, Hải Châu, Đà Nẵng, Việt Nam', description: 'Địa chỉ chuẩn hóa từ Geocoding' })
+  @ApiPropertyOptional({
+    example: '123 Nguyễn Văn Linh, Hải Châu, Đà Nẵng, Việt Nam',
+    description: 'Địa chỉ chuẩn hóa từ Geocoding',
+  })
   @IsString()
   @IsOptional()
   formattedAddress?: string;
 
-  @ApiPropertyOptional({ example: 'Kho bảo quản mát, nhiệt độ 18-22°C', description: 'Mô tả kho' })
+  @ApiPropertyOptional({
+    example: 'Kho bảo quản mát, nhiệt độ 18-22°C',
+    description: 'Mô tả kho',
+  })
   @IsString()
   @IsOptional()
   description?: string;

@@ -14,25 +14,35 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { MetricsInterceptor } from './common/metrics/metrics.interceptor';
+import { MustChangePasswordInterceptor } from './common/interceptors/must-change-password.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useLogger(app.get(Logger));
   app.useGlobalInterceptors(new LoggerErrorInterceptor());
-  
+
   // Phase 4: Graceful Shutdown
   app.enableShutdownHooks();
-  
+
   // Phase 4: Hide X-Powered-By completely
   app.disable('x-powered-by');
 
   const isProd = process.env.NODE_ENV === 'production';
 
   // Phase 4: CORS Hardening
-  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN;
-  let origin: string | string[] = ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://localhost:3002'];
+  const allowedOriginsEnv =
+    process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN;
+  let origin: string | string[] = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+  ];
   if (allowedOriginsEnv) {
-    origin = allowedOriginsEnv.split(',').map(o => o.trim());
+    origin = allowedOriginsEnv.split(',').map((o) => o.trim());
   } else if (isProd) {
     // If prod and no ALLOWED_ORIGINS, env.validation already fails fast.
     origin = [];
@@ -45,33 +55,39 @@ async function bootstrap() {
   });
 
   // Phase 4: Helmet & CSP
-  app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow images/assets to be loaded
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        objectSrc: ["'none'"],
-        frameAncestors: ["'none'"],
-        baseUri: ["'self'"],
-        scriptSrc: ["'self'", isProd ? '' : "'unsafe-inline'"].filter(Boolean),
-        styleSrc: ["'self'", isProd ? '' : "'unsafe-inline'"].filter(Boolean),
-        imgSrc: ["'self'", "data:", "blob:", "http:", "https:"], // Allow images from MinIO or external
-        connectSrc: ["'self'", "http:", "https:"], // Allow connecting to MinIO/external APIs
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images/assets to be loaded
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'self'"],
+          scriptSrc: ["'self'", isProd ? '' : "'unsafe-inline'"].filter(
+            Boolean,
+          ),
+          styleSrc: ["'self'", isProd ? '' : "'unsafe-inline'"].filter(Boolean),
+          imgSrc: ["'self'", 'data:', 'blob:', 'http:', 'https:'], // Allow images from MinIO or external
+          connectSrc: ["'self'", 'http:', 'https:'], // Allow connecting to MinIO/external APIs
+        },
       },
-    }
-  }));
+    }),
+  );
 
   // Phase 4: Compression
-  app.use(compression({
-    filter: (req: any, res: any) => {
-      if (req.headers['x-no-compression']) {
-        // don't compress responses with this request header
-        return false;
-      }
-      // fallback to standard filter function
-      return compression.filter(req, res);
-    }
-  }));
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.headers['x-no-compression']) {
+          // don't compress responses with this request header
+          return false;
+        }
+        // fallback to standard filter function
+        return compression.filter(req, res);
+      },
+    }),
+  );
 
   // Phục vụ static assets (GeoJSON, media)
   app.useStaticAssets(join(process.cwd(), 'assets'), {
@@ -96,9 +112,13 @@ async function bootstrap() {
   );
 
   // Global Exception Filters (Order matters: more specific first)
-  app.useGlobalFilters(new HttpExceptionFilter(), new PrismaClientExceptionFilter());
+  app.useGlobalFilters(
+    new HttpExceptionFilter(),
+    new PrismaClientExceptionFilter(),
+  );
 
   // Global Interceptors
+  app.useGlobalInterceptors(new MustChangePasswordInterceptor());
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalInterceptors(new LoggingInterceptor());
   app.useGlobalInterceptors(app.get(AuditInterceptor));
@@ -108,18 +128,24 @@ async function bootstrap() {
   if (!isProd) {
     const config = new DocumentBuilder()
       .setTitle('OCOP Việt Nam API')
-      .setDescription('Tài liệu hướng dẫn sử dụng REST API cho nền tảng Bản đồ số OCOP Việt Nam')
+      .setDescription(
+        'Tài liệu hướng dẫn sử dụng REST API cho nền tảng Bản đồ số OCOP Việt Nam',
+      )
       .setVersion('1.0')
       .addBearerAuth()
       .build();
-    
+
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document, {
       swaggerOptions: {
         persistAuthorization: true, // Lưu token đăng nhập khi refresh trang
       },
     });
-    app.get(Logger).log(`Swagger UI is accessible at: http://localhost:${process.env.PORT || 3000}/api/docs`);
+    app
+      .get(Logger)
+      .log(
+        `Swagger UI is accessible at: http://localhost:${process.env.PORT || 3000}/api/docs`,
+      );
   } else {
     app.get(Logger).log(`Swagger UI is disabled in production.`);
   }
@@ -128,4 +154,7 @@ async function bootstrap() {
   await app.listen(port);
   app.get(Logger).log(`Backend is running on: http://localhost:${port}`);
 }
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  console.error('Backend startup failed', error);
+  process.exitCode = 1;
+});

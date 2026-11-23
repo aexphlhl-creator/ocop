@@ -19,7 +19,11 @@ export class BlockchainVerificationService {
 
   @Cron('*/1 * * * *')
   async verifyPendingTransactions() {
-    if (this.isRunning || !this.blockchainClientService.isConfigured()) {
+    if (
+      this.isRunning ||
+      !this.blockchainClientService.isConfigured() ||
+      process.env.NODE_ENV === 'test'
+    ) {
       return;
     }
 
@@ -30,7 +34,10 @@ export class BlockchainVerificationService {
           transactionHash: { not: null },
           OR: [
             { status: BlockchainRecordStatus.PROCESSING },
-            { status: BlockchainRecordStatus.CONFIRMED, confirmations: { lt: REQUIRED_CONFIRMATIONS } },
+            {
+              status: BlockchainRecordStatus.CONFIRMED,
+              confirmations: { lt: REQUIRED_CONFIRMATIONS },
+            },
           ],
         },
         orderBy: { createdAt: 'asc' },
@@ -51,7 +58,9 @@ export class BlockchainVerificationService {
     const provider = this.blockchainClientService.getProvider();
     if (!provider) return;
 
-    const record = await this.prisma.blockchainRecord.findUnique({ where: { id: recordId } });
+    const record = await this.prisma.blockchainRecord.findUnique({
+      where: { id: recordId },
+    });
     if (!record) return;
 
     try {
@@ -66,7 +75,8 @@ export class BlockchainVerificationService {
             ...(retryCount >= MAX_RECEIPT_RETRIES
               ? {
                   status: BlockchainRecordStatus.FAILED,
-                  errorMessage: 'Transaction dropped or receipt not found after verification retries',
+                  errorMessage:
+                    'Transaction dropped or receipt not found after verification retries',
                 }
               : {}),
           },
@@ -86,16 +96,20 @@ export class BlockchainVerificationService {
         where: { id: record.id },
         data: {
           blockHash: receipt.blockHash,
-          blockNumber: receipt.blockNumber === null ? null : BigInt(receipt.blockNumber),
+          blockNumber:
+            receipt.blockNumber === null ? null : BigInt(receipt.blockNumber),
           gasUsed: receipt.gasUsed,
           confirmations,
           confirmedAt,
-          confirmationLatencyMs: record.confirmationLatencyMs ?? confirmedAt.getTime() - record.createdAt.getTime(),
+          confirmationLatencyMs:
+            record.confirmationLatencyMs ??
+            confirmedAt.getTime() - record.createdAt.getTime(),
           lastCheckedAt: new Date(),
           retryCount: 0,
-          status: confirmations >= REQUIRED_CONFIRMATIONS
-            ? BlockchainRecordStatus.CONFIRMED
-            : BlockchainRecordStatus.PROCESSING,
+          status:
+            confirmations >= REQUIRED_CONFIRMATIONS
+              ? BlockchainRecordStatus.CONFIRMED
+              : BlockchainRecordStatus.PROCESSING,
           errorMessage: null,
           receipt: {
             hash: receipt.hash,
@@ -110,7 +124,8 @@ export class BlockchainVerificationService {
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown verification error';
+      const message =
+        error instanceof Error ? error.message : 'Unknown verification error';
       await this.prisma.blockchainRecord.update({
         where: { id: record.id },
         data: {
@@ -119,7 +134,9 @@ export class BlockchainVerificationService {
           errorMessage: message,
         },
       });
-      this.logger.warn(`Blockchain verification retry scheduled: record=${record.id} reason=${message}`);
+      this.logger.warn(
+        `Blockchain verification retry scheduled: record=${record.id} reason=${message}`,
+      );
     }
   }
 }

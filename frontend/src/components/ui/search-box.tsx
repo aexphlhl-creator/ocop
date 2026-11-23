@@ -19,9 +19,11 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 }) => {
   const [innerValue, setInnerValue] = useState(value);
 
-  useEffect(() => {
+  const [previousValue, setPreviousValue] = useState(value);
+  if (previousValue !== value) {
+    setPreviousValue(value);
     setInnerValue(value);
-  }, [value]);
+  }
 
   useEffect(() => {
     if (innerValue === value) return;

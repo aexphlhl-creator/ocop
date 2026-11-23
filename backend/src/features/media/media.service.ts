@@ -5,9 +5,47 @@ import {
   UnsupportedMediaTypeException,
   PayloadTooLargeException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from 'minio';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
+import { RoleName } from '@prisma/client';
+import { RequestUser } from '../auth/interfaces/jwt-payload.interface';
+import { matchesUploadedFileSignature } from '../../common/utils/uploaded-file-signature';
+
+export const PUBLIC_MEDIA_FOLDERS = [
+  'products',
+  'avatars',
+  'news',
+  'events',
+] as const;
+
+export const RESTRICTED_SENSITIVE_FOLDERS = [
+  'certificates',
+  'supply-chain',
+  'shipments',
+  'documents',
+] as const;
+
+export function buildRestrictedMediaBucketPolicy(bucketName: string) {
+  return {
+    Version: '2012-10-17',
+    Statement: [
+      {
+        Sid: 'PublicMediaReadOnlyAccess',
+        Effect: 'Allow',
+        Principal: '*',
+        Action: ['s3:GetObject'],
+        Resource: PUBLIC_MEDIA_FOLDERS.map(
+          (folder) => `arn:aws:s3:::${bucketName}/${folder}/*`,
+        ),
+      },
+    ],
+  };
+}
 
 @Injectable()
 export class MediaService implements OnModuleInit {
@@ -24,7 +62,9 @@ export class MediaService implements OnModuleInit {
       this.configService.get<string>('MINIO_BUCKET_NAME', 'ocop-vietnam');
 
     if (this.demoMode) {
-      this.logger.log('[MediaService] DEMO_MODE=true -> Skip MinIO client initialization');
+      this.logger.log(
+        '[MediaService] DEMO_MODE=true -> Skip MinIO client initialization',
+      );
       return;
     }
 
@@ -33,37 +73,34 @@ export class MediaService implements OnModuleInit {
 
   async onModuleInit() {
     if (this.demoMode) {
-      this.logger.log('[MediaService] DEMO_MODE=true -> Skip MinIO bucket initialization');
+      this.logger.log(
+        '[MediaService] DEMO_MODE=true -> Skip MinIO bucket initialization',
+      );
       return;
     }
 
     try {
-      const bucketExists = await this.getMinioClient().bucketExists(this.bucketName);
+      const bucketExists = await this.getMinioClient().bucketExists(
+        this.bucketName,
+      );
 
       if (!bucketExists) {
         await this.getMinioClient().makeBucket(this.bucketName, 'us-east-1');
-
-        const policy = {
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: '*',
-              Action: ['s3:GetObject'],
-              Resource: [`arn:aws:s3:::${this.bucketName}/*`],
-            },
-          ],
-        };
-
-        await this.getMinioClient().setBucketPolicy(
-          this.bucketName,
-          JSON.stringify(policy),
-        );
-
         this.logger.log(`Created MinIO bucket ${this.bucketName}`);
       } else {
         this.logger.log(`MinIO bucket ${this.bucketName} already exists`);
       }
+
+      // Enforce prefix-restricted policy: ONLY designated public folders (products, avatars, news, events) are public.
+      // Certificates, supply-chain, shipments, and documents remain strictly private (NO wildcard /*).
+      const policy = buildRestrictedMediaBucketPolicy(this.bucketName);
+      await this.getMinioClient().setBucketPolicy(
+        this.bucketName,
+        JSON.stringify(policy),
+      );
+      this.logger.log(
+        `Applied restricted bucket policy to ${this.bucketName} (public prefixes: ${PUBLIC_MEDIA_FOLDERS.join(', ')})`,
+      );
     } catch (err) {
       this.logger.error('Failed to configure MinIO bucket', err);
       throw err;
@@ -73,16 +110,22 @@ export class MediaService implements OnModuleInit {
   async uploadImage(
     file: Express.Multer.File,
     folder = 'products',
+    user: RequestUser,
   ) {
-    if (this.demoMode) {
-      this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO upload');
-      throw new BadRequestException(
-        'Upload is disabled in demo mode.',
-      );
-    }
-
     if (!file) {
       throw new BadRequestException('No upload file was provided');
+    }
+
+    const allowedFolders = new Set([
+      'products',
+      'avatars',
+      'news',
+      'supply-chain',
+      'shipments',
+      'events',
+    ]);
+    if (!allowedFolders.has(folder)) {
+      throw new BadRequestException('Upload folder is not allowed');
     }
 
     const allowedMimeTypes = [
@@ -122,14 +165,44 @@ export class MediaService implements OnModuleInit {
     const maxSizeBytes = 10 * 1024 * 1024;
 
     if (file.size > maxSizeBytes) {
-      throw new PayloadTooLargeException(
-        'File size exceeds the 10MB limit',
+      throw new PayloadTooLargeException('File size exceeds the 10MB limit');
+    }
+
+    if (!matchesUploadedFileSignature(file)) {
+      throw new UnsupportedMediaTypeException(
+        'File content does not match its type',
       );
     }
 
-    const randomName = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const randomName = randomUUID();
 
-    const objectName = `${folder}/${randomName}.${fileExt}`;
+    const objectName = `${folder}/${user.id}/${randomName}.${fileExt}`;
+
+    if (this.demoMode) {
+      const uploadDir = join(
+        process.cwd(),
+        'assets',
+        'uploads',
+        folder,
+        user.id,
+      );
+      // Folder is restricted by allowedFolders and filename is server-generated.
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      await fs.mkdir(uploadDir, { recursive: true });
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      await fs.writeFile(
+        join(uploadDir, `${randomName}.${fileExt}`),
+        file.buffer,
+      );
+      const port = this.configService.get<number>('PORT', 3001);
+      this.logger.log(`DEMO_MODE local upload: ${objectName}`);
+      return {
+        url: `http://localhost:${port}/assets/uploads/${objectName}`,
+        objectName: `uploads/${objectName}`,
+        size: file.size,
+        mimeType: file.mimetype,
+      };
+    }
 
     await this.getMinioClient().putObject(
       this.bucketName,
@@ -149,32 +222,60 @@ export class MediaService implements OnModuleInit {
     };
   }
 
-  async deleteImage(objectName: string): Promise<void> {
+  async deleteImage(objectName: string, user: RequestUser): Promise<void> {
+    if (!objectName) {
+      throw new BadRequestException('objectName is required');
+    }
+
+    const [folder, ownerId, fileName, extra] = objectName.split('/');
+    const sellerOwnsFile =
+      !extra &&
+      [
+        'products',
+        'avatars',
+        'news',
+        'supply-chain',
+        'shipments',
+        'events',
+      ].includes(folder) &&
+      ownerId === user.id &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|pdf|doc|docx)$/i.test(
+        fileName,
+      );
+    if (user.role !== RoleName.ADMIN && !sellerOwnsFile) {
+      throw new ForbiddenException('Không có quyền xóa tệp này');
+    }
+
     if (this.demoMode) {
       this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO delete');
       return;
     }
 
-    if (!objectName) {
-      throw new BadRequestException('objectName is required');
-    }
-
     try {
-      await this.getMinioClient().removeObject(
-        this.bucketName,
-        objectName,
-      );
-    } catch (err) {
+      await this.getMinioClient().removeObject(this.bucketName, objectName);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       throw new BadRequestException(
-        `Unable to delete object "${objectName}" from MinIO: ${err.message}`,
+        `Unable to delete object "${objectName}" from MinIO: ${message}`,
       );
     }
   }
 
   generatePublicUrl(objectName: string): string {
     if (this.demoMode) {
-      this.logger.warn('[MediaService] DEMO_MODE=true -> Skip MinIO public URL generation');
+      this.logger.warn(
+        '[MediaService] DEMO_MODE=true -> Skip MinIO public URL generation',
+      );
       return objectName;
+    }
+
+    const publicUrl = this.configService.get<string>('MINIO_PUBLIC_URL');
+    if (publicUrl && publicUrl.trim()) {
+      const cleanBase = publicUrl.trim().replace(/\/+$/, '');
+      if (cleanBase.endsWith(`/${this.bucketName}`)) {
+        return `${cleanBase}/${objectName}`;
+      }
+      return `${cleanBase}/${this.bucketName}/${objectName}`;
     }
 
     const endPoint = this.configService.get<string>(
@@ -182,14 +283,9 @@ export class MediaService implements OnModuleInit {
       'localhost',
     );
 
-    const port = Number(
-      this.configService.get<number>('MINIO_PORT', 9000),
-    );
+    const port = Number(this.configService.get<number>('MINIO_PORT', 9000));
 
-    const useSSL = this.configService.get<boolean>(
-      'MINIO_USE_SSL',
-      false,
-    );
+    const useSSL = this.configService.get<boolean>('MINIO_USE_SSL', false);
 
     const protocol = useSSL ? 'https' : 'http';
 
@@ -200,13 +296,37 @@ export class MediaService implements OnModuleInit {
     return `${protocol}://${endPoint}:${port}/${this.bucketName}/${objectName}`;
   }
 
+  isPublicFolder(folder: string): boolean {
+    return (PUBLIC_MEDIA_FOLDERS as readonly string[]).includes(folder);
+  }
+
+  async getPresignedUrl(
+    objectName: string,
+    expirySeconds = 3600,
+  ): Promise<string> {
+    if (this.demoMode) {
+      return objectName;
+    }
+    return this.getMinioClient().presignedGetObject(
+      this.bucketName,
+      objectName,
+      expirySeconds,
+    );
+  }
+
   private createMinioClient(): Client {
     return new Client({
       endPoint: this.configService.get<string>('MINIO_ENDPOINT', 'localhost'),
       port: Number(this.configService.get<number>('MINIO_PORT', 9000)),
       useSSL: this.configService.get<boolean>('MINIO_USE_SSL', false),
-      accessKey: this.configService.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
-      secretKey: this.configService.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
+      accessKey: this.configService.get<string>(
+        'MINIO_ACCESS_KEY',
+        'minioadmin',
+      ),
+      secretKey: this.configService.get<string>(
+        'MINIO_SECRET_KEY',
+        'minioadmin',
+      ),
     });
   }
 

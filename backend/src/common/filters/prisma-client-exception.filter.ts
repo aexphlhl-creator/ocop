@@ -1,4 +1,10 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Response, Request } from 'express';
 
@@ -6,14 +12,18 @@ import { Response, Request } from 'express';
 export class PrismaClientExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('PrismaClientExceptionFilter');
 
-  catch(exception: Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError, host: ArgumentsHost) {
+  catch(
+    exception:
+      Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError,
+    host: ArgumentsHost,
+  ) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
-    let details: any = undefined;
+    let details: string | undefined;
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       // Prisma error codes documentation: https://www.prisma.io/docs/reference/api-reference/error-reference
@@ -21,7 +31,12 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
         case 'P2002': // Unique constraint failed
           status = HttpStatus.CONFLICT;
           message = 'Dữ liệu đã tồn tại trong hệ thống.';
-          details = exception.meta?.target ? `Trùng lặp trường: ${exception.meta.target}` : undefined;
+          details =
+            typeof exception.meta?.target === 'string'
+              ? `Trùng lặp trường: ${exception.meta.target}`
+              : Array.isArray(exception.meta?.target)
+                ? `Trùng lặp trường: ${exception.meta.target.filter((value): value is string => typeof value === 'string').join(', ')}`
+                : undefined;
           break;
         case 'P2025': // Record not found
           status = HttpStatus.NOT_FOUND;
@@ -47,13 +62,20 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       message = 'Dữ liệu đầu vào không hợp lệ.';
       // Do not expose exception.message directly because it contains schema details!
-      this.logger.warn(`${request.method} ${request.url} - Prisma Validation Error`);
+      this.logger.warn(
+        `${request.method} ${request.url} - Prisma Validation Error`,
+      );
     }
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
-      this.logger.error(`${request.method} ${request.url} - Prisma Error: ${exception.message}`, exception.stack);
+      this.logger.error(
+        `${request.method} ${request.url} - Prisma Error: ${exception.message}`,
+        exception.stack,
+      );
     } else {
-      this.logger.warn(`${request.method} ${request.url} - Status ${status} - Message: ${message}`);
+      this.logger.warn(
+        `${request.method} ${request.url} - Status ${status} - Message: ${message}`,
+      );
     }
 
     response.status(status).json({
@@ -65,7 +87,7 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
         details,
         timestamp: new Date().toISOString(),
         path: request.url,
-        reqId: (request as any).id || request.headers['x-correlation-id'] || 'UNKNOWN',
+        reqId: request.id || request.headers['x-correlation-id'] || 'UNKNOWN',
       },
     });
   }

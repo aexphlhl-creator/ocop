@@ -1,8 +1,12 @@
 'use client';
 
+import type { Product, Province, Ward, SellerProfile, ApiResponse, ProductImage, NamedRecord, OcopLevel } from '@/types/catalog';
+
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
@@ -19,7 +23,7 @@ import { ConfirmDialog } from '../../../../components/ui/confirm-dialog';
 import { LoadingSpinner } from '../../../../components/ui/loading-spinner';
 import { EmptyState } from '../../../../components/ui/empty-state';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Check, X, ShoppingBag, Star } from 'lucide-react';
+import { Plus, Edit, Trash2, Check, X, ShoppingBag } from 'lucide-react';
 
 // ─── Schema giữ nguyên 100% ──────────────────────────────────────────────────
 const productSchema = z.object({
@@ -29,13 +33,13 @@ const productSchema = z.object({
   unit: z.string().min(1, 'Đơn vị tính không được trống'),
   ocopLevelId: z.string().uuid('Vui lòng chọn xếp hạng sao hợp lệ'),
   categoryId: z.string().uuid('Vui lòng chọn ngành hàng hợp lệ'),
-  businessId: z.string().uuid('Vui lòng chọn chủ thể sản xuất hợp lệ'),
+  sellerId: z.string().uuid('Vui lòng chọn người bán hợp lệ').optional(),
   provinceId: z.string().uuid('Vui lòng chọn tỉnh thành hợp lệ'),
   wardId: z.string().uuid('Vui lòng chọn xã phường hợp lệ'),
   latitude: z.number(),
   longitude: z.number(),
   videoUrl: z.string().optional().or(z.literal('')),
-  imageUrls: z.array(z.string().url('Đường dẫn ảnh không hợp lệ').or(z.literal(''))).max(10, 'Tối đa 10 ảnh').optional(),
+  imageUrls: z.array(z.object({ url: z.string().url('Đường dẫn ảnh không hợp lệ').or(z.literal('')) })).max(10, 'Tối đa 10 ảnh').optional(),
   originProcess: z.string().optional(),
   farmingProcess: z.string().optional(),
   harvestProcess: z.string().optional(),
@@ -45,6 +49,7 @@ const productSchema = z.object({
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
+type ProductPayload = Omit<ProductFormValues, 'imageUrls'> & { imageUrls?: string[] };
 
 // Shared select class
 const selectCls = 'h-11 w-full border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 px-3.5 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/15 focus:border-[#16A34A] transition-all disabled:opacity-50 cursor-pointer';
@@ -59,17 +64,11 @@ export default function ProductsCrudPage() {
 
   // ─── Modal state ─────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
-  const [approvingProduct, setApprovingProduct] = useState<any>(null);
-  const [rejectingProduct, setRejectingProduct] = useState<any>(null);
+  const [approvingProduct, setApprovingProduct] = useState<Product | null>(null);
+  const [rejectingProduct, setRejectingProduct] = useState<Product | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  
-  // ─── Upgrade State ───────────────────────────────────────────────────────
-  const [upgradingProduct, setUpgradingProduct] = useState<any>(null);
-  const [upgradeTargetId, setUpgradeTargetId] = useState('');
-  const [upgradeReason, setUpgradeReason] = useState('');
-  const [upgradeDocUrls, setUpgradeDocUrls] = useState<string[]>(['']);
 
   // ─── Form ────────────────────────────────────────────────────────────────
   const {
@@ -77,7 +76,6 @@ export default function ProductsCrudPage() {
     control,
     handleSubmit,
     setValue,
-    watch,
     reset,
     formState: { errors },
   } = useForm<ProductFormValues>({
@@ -86,14 +84,14 @@ export default function ProductsCrudPage() {
   });
 
   const { fields: imageFields, append: appendImage, remove: removeImage } = useFieldArray({
-    control: control as any,
-    name: 'imageUrls' as any,
+    control,
+    name: 'imageUrls',
   });
 
-  const watchedProvinceId = watch('provinceId');
+  const watchedProvinceId = useWatch({ control, name: 'provinceId' });
 
   // ─── Queries giữ nguyên 100% ─────────────────────────────────────────────
-  const { data: productsData, isLoading } = useQuery({
+  const { data: productsData, isLoading } = useQuery<ApiResponse<Product[]>>({
     queryKey: ['crudProductsList', isAdmin, page],
     queryFn: async () => {
       const url = isAdmin ? '/api/v1/products' : '/api/v1/products/my';
@@ -107,7 +105,7 @@ export default function ProductsCrudPage() {
   const productsList = productsData?.data || [];
   const totalPages = productsData?.meta?.totalPages || 1;
 
-  const { data: provinces = [] } = useQuery({
+  const { data: provinces = [] } = useQuery<Province[]>({
     queryKey: ['crudProvinces'],
     queryFn: async () => {
       const res = await api.get('/api/v1/provinces');
@@ -115,7 +113,7 @@ export default function ProductsCrudPage() {
     },
   });
 
-  const { data: wards = [] } = useQuery({
+  const { data: wards = [] } = useQuery<Ward[]>({
     queryKey: ['crudWards', watchedProvinceId],
     queryFn: async () => {
       const res = await api.get(`/api/v1/wards?limit=100&provinceId=${watchedProvinceId}`);
@@ -124,21 +122,26 @@ export default function ProductsCrudPage() {
     enabled: !!watchedProvinceId,
   });
 
-  const { data: metadataProducts = [] } = useQuery({
-    queryKey: ['crudMetadataExtraction'],
+  const { data: categories = [], isError: isCategoriesError } = useQuery<NamedRecord[]>({
+    queryKey: ['crudCategories'],
     queryFn: async () => {
-      const res = await api.get('/api/v1/products?limit=100');
-      return res.data.data || [];
+      const res = await api.get('/api/v1/categories');
+      return res.data.data || res.data || [];
     },
   });
 
-  const categories = Array.from(new Map(metadataProducts.map((p: any) => [p.category?.id, p.category])).values()).filter(Boolean);
-  const ocopLevels = Array.from(new Map(metadataProducts.map((p: any) => [p.ocopLevel?.id, p.ocopLevel])).values()).filter(Boolean);
-
-  const { data: businesses = [] } = useQuery({
-    queryKey: ['crudBusinessesList', isAdmin, user?.id],
+  const { data: ocopLevels = [], isError: isOcopLevelsError } = useQuery<OcopLevel[]>({
+    queryKey: ['crudOcopLevels'],
     queryFn: async () => {
-      const url = isAdmin ? '/api/v1/businesses?limit=100' : `/api/v1/businesses?limit=100&ownerId=${user?.id}`;
+      const res = await api.get('/api/v1/ocop-levels');
+      return res.data.data || res.data || [];
+    },
+  });
+
+  const { data: sellers = [] } = useQuery<SellerProfile[]>({
+    queryKey: ['crudSellersList', isAdmin, user?.id],
+    queryFn: async () => {
+      const url = isAdmin ? '/api/v1/seller-profiles?limit=100' : `/api/v1/seller-profiles?limit=100&ownerId=${user?.id}`;
       const res = await api.get(url);
       return res.data.data || [];
     },
@@ -147,18 +150,18 @@ export default function ProductsCrudPage() {
 
   // ─── Mutations giữ nguyên 100% ───────────────────────────────────────────
   const createMutation = useMutation({
-    mutationFn: (data: ProductFormValues) => api.post('/api/v1/products', data),
+    mutationFn: (data: ProductPayload) => api.post('/api/v1/products', data),
     onSuccess: () => {
       toast.success('Thêm mới sản phẩm thành công!');
       queryClient.invalidateQueries({ queryKey: ['crudProductsList'] });
       setIsFormOpen(false);
       reset();
     },
-    onError: (err: any) => { toast.error(err.response?.data?.message || 'Không thể tạo sản phẩm'); },
+    onError: (err: unknown) => { toast.error(getErrorMessage(err, 'Không thể tạo sản phẩm')); },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ProductFormValues }) => api.patch(`/api/v1/products/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: ProductPayload }) => api.patch(`/api/v1/products/${id}`, data),
     onSuccess: () => {
       toast.success('Cập nhật sản phẩm thành công!');
       queryClient.invalidateQueries({ queryKey: ['crudProductsList'] });
@@ -166,7 +169,7 @@ export default function ProductsCrudPage() {
       setEditingProduct(null);
       reset();
     },
-    onError: (err: any) => { toast.error(err.response?.data?.message || 'Không thể cập nhật sản phẩm'); },
+    onError: (err: unknown) => { toast.error(getErrorMessage(err, 'Không thể cập nhật sản phẩm')); },
   });
 
   const deleteMutation = useMutation({
@@ -176,7 +179,7 @@ export default function ProductsCrudPage() {
       queryClient.invalidateQueries({ queryKey: ['crudProductsList'] });
       setDeletingProductId(null);
     },
-    onError: (err: any) => { toast.error(err.response?.data?.message || 'Không thể xóa sản phẩm'); },
+    onError: (err: unknown) => { toast.error(getErrorMessage(err, 'Không thể xóa sản phẩm')); },
   });
 
   const approveMutation = useMutation({
@@ -189,23 +192,16 @@ export default function ProductsCrudPage() {
       setRejectingProduct(null);
       setRejectReason('');
     },
-    onError: (err: any) => { toast.error(err.response?.data?.message || 'Không thể duyệt sản phẩm'); },
+    onError: (err: unknown) => { toast.error(getErrorMessage(err, 'Không thể duyệt sản phẩm')); },
   });
 
-  const upgradeMutation = useMutation({
-    mutationFn: (data: { productId: string, targetLevelId: string, reason: string, documentUrls: string[] }) =>
-      api.post('/api/v1/upgrades', data),
-    onSuccess: () => {
-      toast.success('Gửi hồ sơ xin nâng hạng sao thành công!');
-      setUpgradingProduct(null);
-      setUpgradeTargetId('');
-      setUpgradeReason('');
-      setUpgradeDocUrls(['']);
-    },
-    onError: (err: any) => { toast.error(err.response?.data?.message || 'Có lỗi xảy ra'); },
-  });
+  const watchedSellerId = useWatch({ control, name: 'sellerId' });
 
-  const watchedBusinessId = watch('businessId');
+  useEffect(() => {
+    if (!isAdmin && !editingProduct && sellers[0]?.sellerId) {
+      setValue('sellerId', sellers[0].sellerId);
+    }
+  }, [isAdmin, editingProduct, sellers, setValue]);
 
   useEffect(() => {
     if (editingProduct) {
@@ -215,7 +211,7 @@ export default function ProductsCrudPage() {
       setValue('unit', editingProduct.unit);
       setValue('ocopLevelId', editingProduct.ocopLevelId);
       setValue('categoryId', editingProduct.categoryId);
-      setValue('businessId', editingProduct.businessId);
+      setValue('sellerId', editingProduct.sellerId);
       setValue('provinceId', editingProduct.provinceId);
       setValue('wardId', editingProduct.wardId);
       setValue('latitude', editingProduct.latitude);
@@ -223,7 +219,7 @@ export default function ProductsCrudPage() {
       setValue('videoUrl', editingProduct.videoUrl || '');
       
       
-      const images = editingProduct.images?.map((img: any) => img.imageUrl) || [];
+      const images = editingProduct.images?.map((img: ProductImage) => ({ url: img.imageUrl })) || [];
       setValue('imageUrls', images);
       
       setValue('originProcess', editingProduct.originProcess || '');
@@ -238,24 +234,29 @@ export default function ProductsCrudPage() {
     }
   }, [editingProduct, setValue]);
 
-  // Tự động điền Tỉnh/Xã theo Chủ thể được chọn
+  // Tự động điền tỉnh/xã theo hồ sơ người bán được chọn.
   useEffect(() => {
-    if (watchedBusinessId && !editingProduct) {
-      const selectedBiz = businesses.find((b: any) => b.id === watchedBusinessId);
-      if (selectedBiz) {
-        if (selectedBiz.province?.id) setValue('provinceId', selectedBiz.province.id);
-        if (selectedBiz.ward?.id) setValue('wardId', selectedBiz.ward.id);
+    if (watchedSellerId && !editingProduct) {
+      const selectedSeller = sellers.find((item: SellerProfile) => item.sellerId === watchedSellerId);
+      if (selectedSeller) {
+        if (selectedSeller.province?.id) setValue('provinceId', selectedSeller.province.id);
+        if (selectedSeller.ward?.id) setValue('wardId', selectedSeller.ward.id);
       }
     }
-  }, [watchedBusinessId, businesses, editingProduct, setValue]);
+  }, [watchedSellerId, sellers, editingProduct, setValue]);
 
   const handleOpenCreate = () => { setEditingProduct(null); reset({ latitude: 16, longitude: 108, imageUrls: [] }); setIsFormOpen(true); };
-  const handleOpenEdit = (product: any) => { setEditingProduct(product); setIsFormOpen(true); };
+  const handleOpenEdit = (product: Product) => { setEditingProduct(product); setIsFormOpen(true); };
   const onSubmit = (data: ProductFormValues) => {
+    const payload: ProductPayload = { ...data, imageUrls: data.imageUrls?.map((image) => image.url).filter(Boolean) };
+    if (isAdmin && !data.sellerId) {
+      toast.error('Vui lòng chọn tài khoản người bán sở hữu sản phẩm');
+      return;
+    }
     if (editingProduct) {
-      updateMutation.mutate({ id: editingProduct.id, data });
+      updateMutation.mutate({ id: editingProduct.id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
@@ -313,7 +314,7 @@ export default function ProductsCrudPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {productsList.map((product: any) => (
+                  {productsList.map((product: Product) => (
                     <TableRow key={product.id}>
                       <TableCell className="font-semibold text-slate-900 dark:text-slate-100 max-w-[180px] truncate">
                         {product.name}
@@ -323,7 +324,7 @@ export default function ProductsCrudPage() {
                       </TableCell>
                       <TableCell>{product.unit}</TableCell>
                       <TableCell className="text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate">
-                        {product.business?.name}
+                        {product.seller?.sellerProfile?.displayName || product.seller?.fullName}
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 text-amber-700 dark:text-amber-400 font-bold rounded-full text-xs">
@@ -350,16 +351,6 @@ export default function ProductsCrudPage() {
                                 <X className="h-4 w-4" />
                               </button>
                             </>
-                          )}
-                          
-                          {!isAdmin && product.status === 'APPROVED' && (
-                            <button
-                              title="Nâng hạng sao"
-                              onClick={() => setUpgradingProduct(product)}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/20 transition-colors"
-                            >
-                              <Star className="h-4 w-4" />
-                            </button>
                           )}
                           
                           <button
@@ -405,6 +396,16 @@ export default function ProductsCrudPage() {
         className="max-w-2xl"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+          {(categories.length === 0 || ocopLevels.length === 0) && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+              <div className="font-bold flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                <span>⚠️ Thiếu dữ liệu ngành hàng hoặc phân hạng sao OCOP</span>
+              </div>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                Hệ thống chưa tải được danh mục ngành hàng hoặc cấp sao OCOP độc lập. Quản trị viên cần khởi tạo dữ liệu nền (Seed Baseline) trước khi tạo sản phẩm mới.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Tên sản phẩm" placeholder="Hồng sấy treo gió Cầu Đất" error={errors.name?.message} {...register('name')} />
             <Input label="Giá bán (VNĐ)" type="number" placeholder="250000" error={errors.price?.message} {...register('price', { valueAsNumber: true })} />
@@ -420,7 +421,7 @@ export default function ProductsCrudPage() {
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Ngành hàng</label>
               <select {...register('categoryId')} className={selectCls}>
                 <option value="">-- Chọn ngành hàng --</option>
-                {categories.map((cat: any) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                {categories.map((cat: NamedRecord) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
               </select>
               {errors.categoryId && <span className="text-xs text-red-500 font-medium">{errors.categoryId.message}</span>}
             </div>
@@ -429,18 +430,18 @@ export default function ProductsCrudPage() {
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Phân hạng sao</label>
               <select {...register('ocopLevelId')} className={selectCls}>
                 <option value="">-- Chọn số sao --</option>
-                {ocopLevels.map((lvl: any) => <option key={lvl.id} value={lvl.id}>{lvl.title}</option>)}
+                {ocopLevels.map((lvl: OcopLevel) => <option key={lvl.id} value={lvl.id}>{lvl.title}</option>)}
               </select>
               {errors.ocopLevelId && <span className="text-xs text-red-500 font-medium">{errors.ocopLevelId.message}</span>}
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Chủ thể liên kết</label>
-              <select {...register('businessId')} className={selectCls}>
-                <option value="">-- Chọn chủ thể --</option>
-                {businesses.map((biz: any) => <option key={biz.id} value={biz.id}>{biz.name}</option>)}
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tài khoản người bán</label>
+              <select {...register('sellerId')} className={selectCls} disabled={!isAdmin}>
+                <option value="">{isAdmin ? '-- Chọn người bán --' : 'Sản phẩm thuộc tài khoản của bạn'}</option>
+                {sellers.map((seller: SellerProfile) => <option key={seller.sellerId} value={seller.sellerId}>{seller.name}</option>)}
               </select>
-              {errors.businessId && <span className="text-xs text-red-500 font-medium">{errors.businessId.message}</span>}
+              {errors.sellerId && <span className="text-xs text-red-500 font-medium">{errors.sellerId.message}</span>}
             </div>
           </div>
 
@@ -449,7 +450,7 @@ export default function ProductsCrudPage() {
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tỉnh / Thành phố</label>
               <select {...register('provinceId')} className={`${selectCls} pointer-events-none bg-slate-50 dark:bg-slate-800/50 opacity-70`}>
                 <option value="">-- Chọn tỉnh/thành --</option>
-                {provinces.map((prov: any) => <option key={prov.id} value={prov.id}>{prov.name}</option>)}
+                {provinces.map((prov: Province) => <option key={prov.id} value={prov.id}>{prov.name}</option>)}
               </select>
               {errors.provinceId && <span className="text-xs text-red-500 font-medium">{errors.provinceId.message}</span>}
             </div>
@@ -458,7 +459,7 @@ export default function ProductsCrudPage() {
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Xã / Phường</label>
               <select {...register('wardId')} className={`${selectCls} pointer-events-none bg-slate-50 dark:bg-slate-800/50 opacity-70`}>
                 <option value="">-- Chọn xã/phường --</option>
-                {wards.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {wards.map((w: Ward) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
               {errors.wardId && <span className="text-xs text-red-500 font-medium">{errors.wardId.message}</span>}
             </div>
@@ -472,7 +473,7 @@ export default function ProductsCrudPage() {
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Hình ảnh sản phẩm (Tối đa 10 ảnh)</label>
-              <Button type="button" variant="outline" size="sm" onClick={() => { if (imageFields.length < 10) appendImage(''); }} disabled={imageFields.length >= 10}>
+              <Button type="button" variant="outline" size="sm" onClick={() => { if (imageFields.length < 10) appendImage({ url: '' }); }} disabled={imageFields.length >= 10}>
                 Thêm ảnh
               </Button>
             </div>
@@ -480,7 +481,7 @@ export default function ProductsCrudPage() {
               {imageFields.map((field, index) => (
                 <div key={field.id} className="flex gap-2">
                   <div className="flex-1">
-                    <Input placeholder="https://..." error={(errors.imageUrls?.[index] as any)?.message} {...register(`imageUrls.${index}` as const)} />
+                    <Input placeholder="https://..." error={errors.imageUrls?.[index]?.url?.message} {...register(`imageUrls.${index}.url` as const)} />
                   </div>
                   <Button type="button" variant="outline" size="sm" className="shrink-0 text-red-500 hover:text-red-600 border-slate-200 dark:border-slate-700" onClick={() => removeImage(index)}>
                     <Trash2 className="h-4 w-4" />
@@ -550,7 +551,13 @@ export default function ProductsCrudPage() {
 
           <div className="flex justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800 pt-5">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsFormOpen(false)}>Hủy</Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={createMutation.isPending || updateMutation.isPending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={categories.length === 0 || ocopLevels.length === 0}
+              isLoading={createMutation.isPending || updateMutation.isPending}
+            >
               Lưu sản phẩm
             </Button>
           </div>
@@ -603,93 +610,6 @@ export default function ProductsCrudPage() {
               isLoading={approveMutation.isPending}
             >
               Gửi từ chối
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={!!upgradingProduct}
-        onClose={() => { setUpgradingProduct(null); setUpgradeTargetId(''); setUpgradeReason(''); setUpgradeDocUrls(['']); }}
-        title="Xin nâng hạng sao OCOP"
-        className="max-w-xl"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Đăng ký nâng hạng sao cho sản phẩm &quot;<span className="font-bold text-slate-900 dark:text-white">{upgradingProduct?.name}</span>&quot; (Đang đạt {upgradingProduct?.ocopLevel?.title}).
-          </p>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Chọn sao mục tiêu</label>
-            <select className={selectCls} value={upgradeTargetId} onChange={e => setUpgradeTargetId(e.target.value)}>
-              <option value="">-- Chọn số sao --</option>
-              {ocopLevels.filter((lvl: any) => lvl.level > (upgradingProduct?.ocopLevel?.level || 0)).map((lvl: any) => (
-                <option key={lvl.id} value={lvl.id}>{lvl.title}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Lý do nâng hạng</label>
-            <textarea
-              value={upgradeReason}
-              onChange={(e) => setUpgradeReason(e.target.value)}
-              rows={3}
-              placeholder="VD: Sản phẩm đã cải tiến chất lượng bao bì, đạt chứng nhận ISO..."
-              className="border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 p-3.5 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A]/15 focus:border-[#16A34A] transition-all resize-none"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tài liệu chứng minh (Links)</label>
-              <Button type="button" variant="outline" size="sm" onClick={() => setUpgradeDocUrls([...upgradeDocUrls, ''])}>
-                Thêm Link
-              </Button>
-            </div>
-            <div className="space-y-2 mt-1">
-              {upgradeDocUrls.map((url, idx) => (
-                <div key={idx} className="flex gap-2">
-                  <Input 
-                    value={url} 
-                    onChange={e => {
-                      const newUrls = [...upgradeDocUrls];
-                      newUrls[idx] = e.target.value;
-                      setUpgradeDocUrls(newUrls);
-                    }} 
-                    placeholder="https://drive.google.com/..." 
-                  />
-                  <Button type="button" variant="outline" size="sm" className="text-red-500" onClick={() => {
-                    const newUrls = [...upgradeDocUrls];
-                    newUrls.splice(idx, 1);
-                    setUpgradeDocUrls(newUrls);
-                  }}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800 pt-4">
-            <Button variant="outline" size="sm" onClick={() => setUpgradingProduct(null)}>Hủy</Button>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!upgradeTargetId || upgradeDocUrls.filter(u => u.trim()).length === 0}
-              onClick={() => {
-                if (upgradingProduct) {
-                  upgradeMutation.mutate({
-                    productId: upgradingProduct.id,
-                    targetLevelId: upgradeTargetId,
-                    reason: upgradeReason,
-                    documentUrls: upgradeDocUrls.filter(u => u.trim())
-                  });
-                }
-              }}
-              isLoading={upgradeMutation.isPending}
-            >
-              Gửi hồ sơ
             </Button>
           </div>
         </div>

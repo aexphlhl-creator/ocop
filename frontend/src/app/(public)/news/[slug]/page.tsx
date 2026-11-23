@@ -1,5 +1,7 @@
 'use client';
 
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -72,7 +74,7 @@ export default function NewsDetailPage() {
       {/* Thumbnail */}
       {article.thumbnail && (
         <div className="rounded-xl overflow-hidden aspect-video w-full bg-slate-100 dark:bg-slate-950 border border-slate-100 dark:border-slate-800">
-          <img src={article.thumbnail} alt={article.title} className="h-full w-full object-cover" />
+          <AssetImage src={article.thumbnail} alt={article.title} className="h-full w-full object-cover" />
         </div>
       )}
 

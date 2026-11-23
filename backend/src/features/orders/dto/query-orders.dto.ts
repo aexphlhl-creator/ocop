@@ -1,10 +1,22 @@
-import { IsOptional, IsEnum, IsUUID, IsDateString, IsInt, Min, Max, IsString } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsDateString,
+  IsInt,
+  Min,
+  Max,
+  IsString,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { OrderStatus } from '@prisma/client';
 
 export class QueryOrdersDto {
-  @ApiPropertyOptional({ enum: OrderStatus, description: 'Lọc theo trạng thái đơn hàng' })
+  @ApiPropertyOptional({
+    enum: OrderStatus,
+    description: 'Lọc theo trạng thái đơn hàng',
+  })
   @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
@@ -14,10 +26,10 @@ export class QueryOrdersDto {
   @IsUUID()
   customerId?: string;
 
-  @ApiPropertyOptional({ description: 'Lọc theo ID doanh nghiệp/seller' })
+  @ApiPropertyOptional({ description: 'Lọc theo ID tài khoản SELLER' })
   @IsOptional()
   @IsUUID()
-  businessId?: string;
+  sellerId?: string;
 
   @ApiPropertyOptional({ description: 'Lọc từ ngày (ISO 8601)' })
   @IsOptional()
@@ -29,7 +41,9 @@ export class QueryOrdersDto {
   @IsDateString()
   dateTo?: string;
 
-  @ApiPropertyOptional({ description: 'Tìm theo tên khách hàng, SĐT hoặc mã đơn' })
+  @ApiPropertyOptional({
+    description: 'Tìm theo tên khách hàng, SĐT hoặc mã đơn',
+  })
   @IsOptional()
   @IsString()
   search?: string;

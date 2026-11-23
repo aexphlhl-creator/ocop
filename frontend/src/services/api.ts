@@ -20,7 +20,7 @@ let failedQueue: Array<{
   reject: (error: unknown) => void;
 }> = [];
 
-const processQueue = (error: Error | null, token: string | null = null) => {
+const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
@@ -49,13 +49,13 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     if (!originalRequest) {
       return Promise.reject(error);
     }
 
     // Nếu gặp lỗi 401 (Unauthorized) và request chưa được thử lại
-    if (error.response?.status === 401 && !(originalRequest as any)._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         // Đưa request vào hàng đợi chờ refresh hoàn tất
         return new Promise((resolve, reject) => {
@@ -72,7 +72,7 @@ api.interceptors.response.use(
           });
       }
 
-      (originalRequest as any)._retry = true;
+      originalRequest._retry = true;
       isRefreshing = true;
 
       const refreshToken = useAuthStore.getState().refreshToken;
@@ -85,7 +85,7 @@ api.interceptors.response.use(
 
       try {
         // Gọi API refresh token
-        const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
+        const response = await axios.post<{ data: { accessToken: string; refreshToken: string } }>(`${API_URL}/api/v1/auth/refresh`, {
           refreshToken,
         });
 
@@ -101,7 +101,7 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         }
         return api(originalRequest);
-      } catch (refreshError: any) {
+      } catch (refreshError: unknown) {
         processQueue(refreshError, null);
         useAuthStore.getState().logout();
         return Promise.reject(refreshError);

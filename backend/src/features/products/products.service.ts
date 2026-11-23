@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ProductsRepository } from './products.repository';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -23,12 +28,7 @@ export class ProductsService {
   ) {}
 
   async create(dto: CreateProductDto, currentUser: RequestUser) {
-    if (currentUser.role === RoleName.SELLER) {
-      const isOwner = await this.productsRepository.checkBusinessOwnership(dto.businessId, currentUser.id);
-      if (!isOwner) {
-        throw new ForbiddenException('Bạn không có quyền tạo sản phẩm cho chủ thể sản xuất này');
-      }
-    }
+    const sellerId = await this.resolveSellerId(dto, currentUser);
 
     const baseSlug = this.slugify(dto.name);
     let finalSlug = baseSlug;
@@ -37,7 +37,10 @@ export class ProductsService {
       finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
     }
 
-    const status = currentUser.role === RoleName.ADMIN ? ProductStatus.APPROVED : ProductStatus.PENDING;
+    const status =
+      currentUser.role === RoleName.ADMIN
+        ? ProductStatus.APPROVED
+        : ProductStatus.PENDING;
 
     const productInput = {
       name: dto.name,
@@ -57,19 +60,28 @@ export class ProductsService {
       status,
       category: { connect: { id: dto.categoryId } },
       ocopLevel: { connect: { id: dto.ocopLevelId } },
-      business: { connect: { id: dto.businessId } },
+      seller: { connect: { id: sellerId } },
       province: { connect: { id: dto.provinceId } },
       ward: { connect: { id: dto.wardId } },
     };
 
     const imageUrls = dto.imageUrls?.slice(0, 10) || [];
 
-    const product = await this.productsRepository.create(productInput, imageUrls);
+    const product = await this.productsRepository.create(
+      productInput,
+      imageUrls,
+    );
     await this.clearProductListCache();
-    
+
     // Ghi Blockchain cho Sản phẩm mới (nếu có truy xuất nguồn gốc)
-    const p = product as any;
-    if (p.originProcess || p.farmingProcess || p.harvestProcess || p.packagingProcess || p.certificateNumber) {
+    const p = product;
+    if (
+      p.originProcess ||
+      p.farmingProcess ||
+      p.harvestProcess ||
+      p.packagingProcess ||
+      p.certificateNumber
+    ) {
       await this.blockchainService.createBlock(product.id, 'PRODUCT_CREATED', {
         originProcess: p.originProcess,
         farmingProcess: p.farmingProcess,
@@ -79,12 +91,16 @@ export class ProductsService {
         harvestDate: p.harvestDate,
       });
     }
-    
+
     // Gửi thông báo
-    if (currentUser.role === RoleName.SELLER && product.business) {
-      await this.notificationsService.notifyAdminsNewProduct(product.name, product.business.name, product.id);
+    if (currentUser.role === RoleName.SELLER) {
+      await this.notificationsService.notifyAdminsNewProduct(
+        product.name,
+        product.seller.sellerProfile?.displayName ?? product.seller.fullName,
+        product.id,
+      );
     }
-    
+
     return product;
   }
 
@@ -96,6 +112,7 @@ export class ProductsService {
       categoryId,
       provinceId,
       wardId,
+      sellerId,
       businessId,
       ocopLevelId,
       status,
@@ -106,12 +123,20 @@ export class ProductsService {
     } = query;
 
     // Thiết lập khóa cache dựa trên các bộ tham số đầu vào và role người dùng để tránh rò rỉ dữ liệu
-    const userKey = userContext ? `${userContext.id}_${userContext.role}` : 'visitor';
-    const cacheKey = `products:list:u_${userKey}:s_${search || ''}:cat_${categoryId || 'all'}:p_${provinceId || 'all'}:w_${wardId || 'all'}:b_${businessId || 'all'}:lv_${ocopLevelId || 'all'}:st_${status || 'all'}:min_${minPrice || '0'}:max_${maxPrice || 'inf'}:pg_${page}:lim_${limit}:sby_${sortBy}:sod_${sortOrder}`;
+    const userKey = userContext
+      ? `${userContext.id}_${userContext.role}`
+      : 'visitor';
+    const cacheKey = `products:list:u_${userKey}:s_${search || ''}:cat_${categoryId || 'all'}:p_${provinceId || 'all'}:w_${wardId || 'all'}:seller_${sellerId || 'all'}:legacy_${businessId || 'all'}:lv_${ocopLevelId || 'all'}:st_${status || 'all'}:min_${minPrice || '0'}:max_${maxPrice || 'inf'}:pg_${page}:lim_${limit}:sby_${sortBy}:sod_${sortOrder}`;
 
     const cachedData = await this.redisService.get(cacheKey);
     if (cachedData) {
-      return JSON.parse(cachedData);
+      return JSON.parse(cachedData) as ReturnType<
+        typeof createPaginationResponse<
+          Awaited<
+            ReturnType<ProductsRepository['findAndCount']>
+          >['items'][number]
+        >
+      >;
     }
 
     const skip = (page - 1) * limit;
@@ -124,6 +149,7 @@ export class ProductsService {
       categoryId,
       provinceId,
       wardId,
+      sellerId,
       businessId,
       ocopLevelId,
       status,
@@ -134,8 +160,25 @@ export class ProductsService {
       userContext,
     });
 
-    const response = createPaginationResponse(items, total, page, limit);
-    await this.redisService.set(cacheKey, JSON.stringify(response), this.CACHE_TTL);
+    const stockMap = await this.productsRepository.calculateBatchAvailableStock(
+      items.map((item) => item.id),
+    );
+    const itemsWithStock = items.map((item) => ({
+      ...item,
+      availableStock: stockMap.get(item.id) ?? 0,
+    }));
+
+    const response = createPaginationResponse(
+      itemsWithStock,
+      total,
+      page,
+      limit,
+    );
+    await this.redisService.set(
+      cacheKey,
+      JSON.stringify(response),
+      this.CACHE_TTL,
+    );
     return response;
   }
 
@@ -143,49 +186,81 @@ export class ProductsService {
     const skip = (page - 1) * limit;
     const take = limit;
 
-    const { items, total } = await this.productsRepository.findSellerProductsAndCount({
-      sellerId: currentUser.id,
-      skip,
-      take,
-    });
+    const { items, total } =
+      await this.productsRepository.findSellerProductsAndCount({
+        sellerId: currentUser.id,
+        skip,
+        take,
+      });
 
-    return createPaginationResponse(items, total, page, limit);
+    const stockMap = await this.productsRepository.calculateBatchAvailableStock(
+      items.map((item) => item.id),
+    );
+    const itemsWithStock = items.map((item) => ({
+      ...item,
+      availableStock: stockMap.get(item.id) ?? 0,
+    }));
+
+    return createPaginationResponse(itemsWithStock, total, page, limit);
   }
 
   async findOne(id: string, currentUser?: RequestUser | null) {
     const product = await this.productsRepository.findById(id);
     if (!product) {
-      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
+    }
+
+    if (!product.seller.isActive && currentUser?.role !== RoleName.ADMIN) {
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
     }
 
     if (product.status !== ProductStatus.APPROVED) {
       if (!currentUser) {
         throw new ForbiddenException('Bạn không có quyền xem sản phẩm này');
       }
-      if (currentUser.role === RoleName.SELLER && product.business?.userId !== currentUser.id) {
+      if (
+        currentUser.role === RoleName.SELLER &&
+        product.sellerId !== currentUser.id
+      ) {
         throw new ForbiddenException('Bạn không có quyền xem sản phẩm này');
       }
     }
 
-    return product;
+    const availableStock =
+      await this.productsRepository.calculateAvailableStock(
+        product.id,
+        product.sellerId,
+      );
+
+    return {
+      ...product,
+      availableStock,
+    };
   }
 
   async update(id: string, dto: UpdateProductDto, currentUser: RequestUser) {
     const existing = await this.productsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
     }
 
     if (currentUser.role === RoleName.SELLER) {
-      if (existing.business.userId !== currentUser.id) {
-        throw new ForbiddenException('Bạn không sở hữu sản phẩm này nên không thể sửa đổi');
+      if (existing.sellerId !== currentUser.id) {
+        throw new ForbiddenException(
+          'Bạn không sở hữu sản phẩm này nên không thể sửa đổi',
+        );
       }
 
-      if (dto.businessId) {
-        const isOwner = await this.productsRepository.checkBusinessOwnership(dto.businessId, currentUser.id);
-        if (!isOwner) {
-          throw new ForbiddenException('Bạn không có quyền chuyển sản phẩm sang chủ thể sản xuất này');
-        }
+      if (dto.sellerId && dto.sellerId !== currentUser.id) {
+        throw new ForbiddenException(
+          'SELLER không được chuyển quyền sở hữu sản phẩm',
+        );
       }
     }
 
@@ -200,7 +275,8 @@ export class ProductsService {
     if (dto.name && dto.name !== existing.name) {
       const baseSlug = this.slugify(dto.name);
       finalSlug = baseSlug;
-      const existingProduct = await this.productsRepository.findBySlug(finalSlug);
+      const existingProduct =
+        await this.productsRepository.findBySlug(finalSlug);
       if (existingProduct && existingProduct.id !== id) {
         finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
       }
@@ -215,45 +291,77 @@ export class ProductsService {
       latitude: dto.latitude,
       longitude: dto.longitude,
       videoUrl: dto.videoUrl || null,
-      originProcess: dto.originProcess !== undefined ? dto.originProcess : undefined,
-      farmingProcess: dto.farmingProcess !== undefined ? dto.farmingProcess : undefined,
-      harvestProcess: dto.harvestProcess !== undefined ? dto.harvestProcess : undefined,
-      packagingProcess: dto.packagingProcess !== undefined ? dto.packagingProcess : undefined,
-      certificateNumber: dto.certificateNumber !== undefined ? dto.certificateNumber : undefined,
-      harvestDate: dto.harvestDate !== undefined ? (dto.harvestDate ? new Date(dto.harvestDate) : null) : undefined,
+      originProcess:
+        dto.originProcess !== undefined ? dto.originProcess : undefined,
+      farmingProcess:
+        dto.farmingProcess !== undefined ? dto.farmingProcess : undefined,
+      harvestProcess:
+        dto.harvestProcess !== undefined ? dto.harvestProcess : undefined,
+      packagingProcess:
+        dto.packagingProcess !== undefined ? dto.packagingProcess : undefined,
+      certificateNumber:
+        dto.certificateNumber !== undefined ? dto.certificateNumber : undefined,
+      harvestDate:
+        dto.harvestDate !== undefined
+          ? dto.harvestDate
+            ? new Date(dto.harvestDate)
+            : null
+          : undefined,
       status,
-      category: dto.categoryId ? { connect: { id: dto.categoryId } } : undefined,
-      ocopLevel: dto.ocopLevelId ? { connect: { id: dto.ocopLevelId } } : undefined,
-      business: dto.businessId ? { connect: { id: dto.businessId } } : undefined,
-      province: dto.provinceId ? { connect: { id: dto.provinceId } } : undefined,
+      category: dto.categoryId
+        ? { connect: { id: dto.categoryId } }
+        : undefined,
+      ocopLevel: dto.ocopLevelId
+        ? { connect: { id: dto.ocopLevelId } }
+        : undefined,
+      seller:
+        currentUser.role === RoleName.ADMIN && dto.sellerId
+          ? { connect: { id: dto.sellerId } }
+          : undefined,
+      province: dto.provinceId
+        ? { connect: { id: dto.provinceId } }
+        : undefined,
       ward: dto.wardId ? { connect: { id: dto.wardId } } : undefined,
     };
 
     const imageUrls = dto.imageUrls?.slice(0, 10) || [];
 
-    const product = await this.productsRepository.update(id, updateInputData, imageUrls);
+    const product = await this.productsRepository.update(
+      id,
+      updateInputData,
+      imageUrls,
+    );
     await this.clearProductListCache();
 
     // Ghi Blockchain khi cập nhật dữ liệu truy xuất nguồn gốc
-    const ex = existing as any;
-    const hasTraceabilityChanges = 
-      (dto.originProcess !== undefined && dto.originProcess !== ex.originProcess) ||
-      (dto.farmingProcess !== undefined && dto.farmingProcess !== ex.farmingProcess) ||
-      (dto.harvestProcess !== undefined && dto.harvestProcess !== ex.harvestProcess) ||
-      (dto.packagingProcess !== undefined && dto.packagingProcess !== ex.packagingProcess) ||
-      (dto.certificateNumber !== undefined && dto.certificateNumber !== ex.certificateNumber) ||
-      (dto.harvestDate !== undefined);
+    const ex = existing;
+    const hasTraceabilityChanges =
+      (dto.originProcess !== undefined &&
+        dto.originProcess !== ex.originProcess) ||
+      (dto.farmingProcess !== undefined &&
+        dto.farmingProcess !== ex.farmingProcess) ||
+      (dto.harvestProcess !== undefined &&
+        dto.harvestProcess !== ex.harvestProcess) ||
+      (dto.packagingProcess !== undefined &&
+        dto.packagingProcess !== ex.packagingProcess) ||
+      (dto.certificateNumber !== undefined &&
+        dto.certificateNumber !== ex.certificateNumber) ||
+      dto.harvestDate !== undefined;
 
     if (hasTraceabilityChanges) {
-      const up = product as any;
-      await this.blockchainService.createBlock(product.id, 'TRACEABILITY_UPDATED', {
-        originProcess: up.originProcess,
-        farmingProcess: up.farmingProcess,
-        harvestProcess: up.harvestProcess,
-        packagingProcess: up.packagingProcess,
-        certificateNumber: up.certificateNumber,
-        harvestDate: up.harvestDate,
-      });
+      const up = product;
+      await this.blockchainService.createBlock(
+        product.id,
+        'TRACEABILITY_UPDATED',
+        {
+          originProcess: up.originProcess,
+          farmingProcess: up.farmingProcess,
+          harvestProcess: up.harvestProcess,
+          packagingProcess: up.packagingProcess,
+          certificateNumber: up.certificateNumber,
+          harvestDate: up.harvestDate,
+        },
+      );
     }
 
     return product;
@@ -262,12 +370,16 @@ export class ProductsService {
   async approve(id: string, dto: ApproveProductDto, currentUser: RequestUser) {
     const existing = await this.productsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
     }
 
     // Yêu cầu nhập lý do từ chối nếu chuyển trạng thái sang REJECTED
     if (dto.status === ProductStatus.REJECTED && !dto.reason) {
-      throw new BadRequestException('Bắt buộc phải nhập lý do từ chối (reason) khi REJECTED sản phẩm');
+      throw new BadRequestException(
+        'Bắt buộc phải nhập lý do từ chối (reason) khi REJECTED sản phẩm',
+      );
     }
 
     const product = await this.productsRepository.approveProduct({
@@ -281,11 +393,11 @@ export class ProductsService {
     await this.clearProductListCache();
 
     // Gửi thông báo cho Seller
-    if (existing.business && existing.business.userId) {
+    if (existing.sellerId) {
       const isApproved = dto.status === ProductStatus.APPROVED;
       if (dto.status !== ProductStatus.PENDING) {
         await this.notificationsService.notifySellerProductStatus(
-          existing.business.userId,
+          existing.sellerId,
           existing.name,
           isApproved,
           dto.reason,
@@ -299,12 +411,16 @@ export class ProductsService {
   async remove(id: string, currentUser: RequestUser) {
     const existing = await this.productsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
     }
 
     if (currentUser.role === RoleName.SELLER) {
-      if (existing.business.userId !== currentUser.id) {
-        throw new ForbiddenException('Bạn không sở hữu sản phẩm này nên không thể xóa');
+      if (existing.sellerId !== currentUser.id) {
+        throw new ForbiddenException(
+          'Bạn không sở hữu sản phẩm này nên không thể xóa',
+        );
       }
     }
 
@@ -339,12 +455,42 @@ export class ProductsService {
       .replace(/-+/g, '-')
       .trim();
   }
+
+  private async resolveSellerId(
+    dto: Pick<CreateProductDto, 'sellerId' | 'businessId'>,
+    currentUser: RequestUser,
+  ) {
+    if (currentUser.role === RoleName.SELLER) {
+      return currentUser.id;
+    }
+
+    let sellerId = dto.sellerId;
+    if (!sellerId && dto.businessId) {
+      sellerId =
+        (await this.productsRepository.findSellerIdByLegacyBusiness(
+          dto.businessId,
+        )) ?? undefined;
+    }
+    if (!sellerId) {
+      throw new BadRequestException(
+        'ADMIN phải chọn tài khoản SELLER sở hữu sản phẩm',
+      );
+    }
+    if (!(await this.productsRepository.isActiveSeller(sellerId))) {
+      throw new BadRequestException(
+        'Tài khoản sở hữu không phải SELLER đang hoạt động',
+      );
+    }
+    return sellerId;
+  }
   async incrementViewCount(id: string) {
     const existing = await this.productsRepository.findById(id);
     if (!existing) {
-      throw new NotFoundException(`Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`);
+      throw new NotFoundException(
+        `Sản phẩm có ID "${id}" không tồn tại hoặc đã bị xóa`,
+      );
     }
-    await this.productsRepository.incrementViewCount(id);
+    await this.productsRepository.incrementViewCount(existing.id);
     return { success: true };
   }
 }

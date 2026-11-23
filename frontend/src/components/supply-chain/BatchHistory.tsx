@@ -1,17 +1,49 @@
 import React from 'react';
 import { LoadingSpinner } from '../ui/loading-spinner';
 import { Button } from '../ui/button';
-import { MapPin, User, Clock } from 'lucide-react';
+import { MapPin, User } from 'lucide-react';
+
+type HistoryFilter = {
+  stageId: string;
+  actorName: string;
+  dateFrom: string;
+  dateTo: string;
+  page: number;
+};
+
+type HistoryItem = {
+  id: string;
+  batchId: string;
+  actorName: string;
+  location: string;
+  eventTime?: string | null;
+  createdAt: string;
+  stage?: { name?: string; displayName?: string } | null;
+  batch?: {
+    batchNumber?: string;
+    inventory?: { product?: { name?: string } | null } | null;
+  } | null;
+};
+
+type HistoryData = {
+  items: HistoryItem[];
+  meta?: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+  };
+};
 
 interface BatchHistoryProps {
-  historyData: any;
+  historyData?: HistoryData;
   isLoading: boolean;
-  filter: any;
-  setFilter: (filter: any) => void;
+  filter: HistoryFilter;
+  setFilter: React.Dispatch<React.SetStateAction<HistoryFilter>>;
   onSelectBatch: (batchId: string) => void;
 }
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr?: string | null) {
+  if (!dateStr) return '-';
   return new Date(dateStr).toLocaleString('vi-VN', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -41,7 +73,7 @@ export function BatchHistory({ historyData, isLoading, filter, setFilter, onSele
                 <td colSpan={4} className="text-center py-12 text-slate-400">Không có dữ liệu lịch sử</td>
               </tr>
             ) : (
-              historyData?.items?.map((item: any) => (
+              historyData?.items?.map((item) => (
                 <tr 
                   key={item.id} 
                   className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
@@ -63,7 +95,7 @@ export function BatchHistory({ historyData, isLoading, filter, setFilter, onSele
                     </div>
                   </td>
                   <td className="px-5 py-3 text-right text-slate-400 text-xs">
-                    {formatDate(item.createdAt)}
+                    {formatDate(item.eventTime ?? item.createdAt)}
                   </td>
                 </tr>
               ))
@@ -82,7 +114,7 @@ export function BatchHistory({ historyData, isLoading, filter, setFilter, onSele
             <Button
               variant="outline"
               disabled={filter.page <= 1}
-              onClick={() => setFilter((f: any) => ({ ...f, page: f.page - 1 }))}
+              onClick={() => setFilter((current) => ({ ...current, page: current.page - 1 }))}
               className="text-xs px-3 py-1.5 h-auto"
             >
               ← Trước
@@ -90,7 +122,7 @@ export function BatchHistory({ historyData, isLoading, filter, setFilter, onSele
             <Button
               variant="outline"
               disabled={filter.page >= historyData.meta.totalPages}
-              onClick={() => setFilter((f: any) => ({ ...f, page: f.page + 1 }))}
+              onClick={() => setFilter((current) => ({ ...current, page: current.page + 1 }))}
               className="text-xs px-3 py-1.5 h-auto"
             >
               Sau →

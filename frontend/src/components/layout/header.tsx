@@ -7,17 +7,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '../../stores/theme.store';
 import { useAuthStore } from '../../stores/auth.store';
 import {
-  Sun, Moon, Menu, X, LayoutDashboard, LogOut, User as UserIcon,
-  ChevronDown, Leaf, ShoppingCart
+  Sun, Moon, Menu, X, LayoutDashboard, CalendarRange, LogOut, User as UserIcon,
+  ChevronDown, ShoppingCart
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useCart } from '../../hooks/use-cart';
 import { CartDrawer } from '../ecommerce/cart-drawer';
+import { OcopLogo } from '../ui/ocop-logo';
+import { useHydrated } from '../../hooks/use-hydrated';
 
 const navLinks = [
   { href: '/', label: 'Trang chủ' },
   { href: '/products', label: 'Sản phẩm' },
   { href: '/shops', label: 'Gian hàng' },
+  { href: '/events', label: 'Sự kiện' },
   { href: '/news', label: 'Tin tức' },
   { href: '/map', label: 'Bản đồ' },
 ];
@@ -27,14 +30,12 @@ export const Header: React.FC = () => {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useHydrated();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const totalItems = useCart((state) => state.getTotalItems());
-
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -42,8 +43,12 @@ export const Header: React.FC = () => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Close mobile menu on route change
-  useEffect(() => { setMobileOpen(false); setUserMenuOpen(false); }, [pathname]);
+  const [menuPathname, setMenuPathname] = useState(pathname);
+  if (menuPathname !== pathname) {
+    setMenuPathname(pathname);
+    setMobileOpen(false);
+    setUserMenuOpen(false);
+  }
 
   const handleLogout = () => {
     logout();
@@ -69,14 +74,12 @@ export const Header: React.FC = () => {
         <div className="mx-auto flex max-w-7xl items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group shrink-0" aria-label="OCOP Việt Nam – Trang chủ">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#16A34A] text-white shadow-sm shadow-emerald-500/25 transition-transform duration-200 group-hover:scale-105">
-              <Leaf className="h-4.5 w-4.5 fill-white text-white" />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">OCOP</span>
-              <span className="text-[10px] text-[#16A34A] font-semibold tracking-wider uppercase">Việt Nam</span>
-            </div>
+          <Link
+            href="/"
+            className="flex items-center gap-2 group shrink-0 transition-transform duration-200 hover:scale-[1.02]"
+            aria-label="OCOP Việt Nam – Trang chủ"
+          >
+            <OcopLogo size="md" priority />
           </Link>
 
           {/* Desktop Nav */}
@@ -173,6 +176,13 @@ export const Header: React.FC = () => {
                       >
                         <LayoutDashboard className="h-4 w-4 text-slate-400" />
                         Bảng điều khiển
+                      </Link>
+                      <Link
+                        href="/dashboard/events"
+                        className="flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <CalendarRange className="h-4 w-4 text-slate-400" />
+                        Sự kiện &amp; Hội chợ
                       </Link>
                       <Link
                         href="/dashboard/profile"

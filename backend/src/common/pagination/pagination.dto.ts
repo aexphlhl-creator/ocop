@@ -10,7 +10,12 @@ export class PaginationDto {
   @IsOptional()
   page = 1;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 10, description: 'Số lượng bản ghi mỗi trang' })
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    default: 10,
+    description: 'Số lượng bản ghi mỗi trang',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)

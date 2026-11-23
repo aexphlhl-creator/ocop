@@ -12,10 +12,16 @@ import {
   UploadedFiles,
   UseGuards,
   UseInterceptors,
-  ParseUUIDPipe
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RoleName } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -58,37 +64,55 @@ export class CertificatesController {
 
   @Post('cleanup')
   @Roles(RoleName.ADMIN)
-  @ApiOperation({ summary: 'Dry-run cleanup các file thuộc chứng nhận đã xóa mềm' })
+  @ApiOperation({
+    summary: 'Dry-run cleanup các file thuộc chứng nhận đã xóa mềm',
+  })
   cleanup(@CurrentUser() user: RequestUser) {
     return this.certificatesService.cleanup(user);
   }
 
   @Get('product/:productId')
   @ApiOperation({ summary: 'Danh sách chứng nhận theo Product' })
-  findByProduct(@Param('productId', ParseUUIDPipe) productId: string, @CurrentUser() user: RequestUser) {
+  findByProduct(
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.certificatesService.findByProduct(productId, user);
   }
 
   @Get('batch/:batchId')
   @ApiOperation({ summary: 'Danh sách chứng nhận theo Batch' })
-  findByBatch(@Param('batchId', ParseUUIDPipe) batchId: string, @CurrentUser() user: RequestUser) {
+  findByBatch(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.certificatesService.findByBatch(batchId, user);
   }
 
   @Get()
   @ApiOperation({ summary: 'Danh sách chứng nhận có phân trang và bộ lọc' })
-  findAll(@Query() query: GetCertificatesQueryDto, @CurrentUser() user: RequestUser) {
+  findAll(
+    @Query() query: GetCertificatesQueryDto,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.certificatesService.findAll(query, user);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Chi tiết chứng nhận' })
-  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.certificatesService.findOne(id, user);
   }
 
   @Post()
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateCertificateDto })
   @ApiOperation({ summary: 'Tạo chứng nhận mới kèm file metadata' })
@@ -101,10 +125,16 @@ export class CertificatesController {
   }
 
   @Patch(':id')
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateCertificateDto })
-  @ApiOperation({ summary: 'Cập nhật chứng nhận; upload lại file sẽ tính lại documentHash' })
+  @ApiOperation({
+    summary: 'Cập nhật chứng nhận; upload lại file sẽ tính lại documentHash',
+  })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCertificateDto,
@@ -116,7 +146,10 @@ export class CertificatesController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Xóa mềm chứng nhận, không hard delete' })
-  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: RequestUser) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     return this.certificatesService.remove(id, user);
   }
 }

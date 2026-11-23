@@ -18,6 +18,11 @@ contract TraceabilityRegistry {
     mapping(bytes32 => TraceabilityRecord[]) private productRecords;
     mapping(bytes32 => TraceabilityRecord[]) private batchRecords;
 
+    // Idempotency mapping: recordKey => block number where it was recorded
+    mapping(bytes32 => uint256) public recordBlockNumbers;
+    // Idempotency mapping: recordKey => whether it has been executed
+    mapping(bytes32 => bool) public executedRecords;
+
     event TraceabilityRecorded(
         string productId,
         string batchId,
@@ -35,6 +40,7 @@ contract TraceabilityRegistry {
     error OnlyRecorder();
     error EmptyProductId();
     error EmptyAction();
+    error DuplicateRecord();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -62,6 +68,36 @@ contract TraceabilityRegistry {
         emit RecorderRevoked(recorder);
     }
 
+    function computeRecordKey(
+        string calldata productId,
+        string calldata batchId,
+        string calldata action,
+        bytes32 metadataHash,
+        bytes32 documentHash
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encode(productId, batchId, action, metadataHash, documentHash));
+    }
+
+    function hasRecord(
+        string calldata productId,
+        string calldata batchId,
+        string calldata action,
+        bytes32 metadataHash,
+        bytes32 documentHash
+    ) external view returns (bool) {
+        return executedRecords[computeRecordKey(productId, batchId, action, metadataHash, documentHash)];
+    }
+
+    function getRecordBlockNumber(
+        string calldata productId,
+        string calldata batchId,
+        string calldata action,
+        bytes32 metadataHash,
+        bytes32 documentHash
+    ) external view returns (uint256) {
+        return recordBlockNumbers[computeRecordKey(productId, batchId, action, metadataHash, documentHash)];
+    }
+
     function recordTraceability(
         string calldata productId,
         string calldata batchId,
@@ -71,6 +107,12 @@ contract TraceabilityRegistry {
     ) external onlyRecorder {
         if (bytes(productId).length == 0) revert EmptyProductId();
         if (bytes(action).length == 0) revert EmptyAction();
+
+        bytes32 recordKey = computeRecordKey(productId, batchId, action, metadataHash, documentHash);
+        if (executedRecords[recordKey]) revert DuplicateRecord();
+
+        executedRecords[recordKey] = true;
+        recordBlockNumbers[recordKey] = block.number;
 
         TraceabilityRecord memory traceabilityRecord = TraceabilityRecord({
             productId: productId,

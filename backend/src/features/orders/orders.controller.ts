@@ -1,12 +1,26 @@
 import {
-  Controller, Post, Get, Patch, Delete,
-  Body, Param, Query, UseGuards, Req,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
   ParseUUIDPipe,
+  GoneException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CheckoutDto } from './dto/checkout.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -15,34 +29,50 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequestUser } from '../auth/interfaces/jwt-payload.interface';
 import { RoleName } from '@prisma/client';
+import { CheckoutService } from './checkout.service';
 
 @ApiTags('Orders')
 @Controller('api/v1/orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly checkoutService: CheckoutService,
+  ) {}
 
   // ── Create ────────────────────────────────────────────────────────────────
 
   @Post()
   @ApiOperation({ summary: 'Tạo đơn hàng mới (tự động reserve tồn kho)' })
   @ApiResponse({ status: 201, description: 'Đơn hàng được tạo thành công' })
-  async create(
-    @Body() dto: CreateOrderDto,
+  create() {
+    throw new GoneException(
+      'Endpoint này đã ngừng hoạt động. Sử dụng POST /api/v1/orders/checkout',
+    );
+  }
+
+  @Post('checkout')
+  @ApiOperation({ summary: 'Checkout nhiều gian hàng, reserve kho nguyên tử' })
+  async checkout(
+    @Body() dto: CheckoutDto,
     @CurrentUser() user: RequestUser,
     @Req() req: Request,
   ) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      || req.socket?.remoteAddress;
-    return this.ordersService.create(dto, user, ip);
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      '127.0.0.1';
+    return this.checkoutService.checkout(dto, user, ip);
   }
 
-  // ── List Orders (Admin: all, Seller: own business) ────────────────────────
+  // ── List Orders (Admin: all, Seller: direct ownership) ────────────────────
 
   @Get()
   @Roles(RoleName.ADMIN, RoleName.SELLER)
-  @ApiOperation({ summary: 'Danh sách đơn hàng (Admin: tất cả | Seller: của shop mình)' })
+  @ApiOperation({
+    summary: 'Danh sách đơn hàng (Admin: tất cả | Seller: của shop mình)',
+  })
   async getOrders(
     @Query() query: QueryOrdersDto,
     @CurrentUser() user: RequestUser,
@@ -92,7 +122,8 @@ export class OrdersController {
   @Patch(':id/status')
   @Roles(RoleName.ADMIN, RoleName.SELLER)
   @ApiOperation({
-    summary: 'Cập nhật trạng thái đơn hàng — tự động xuất kho + Supply Chain khi SHIPPED/DELIVERED',
+    summary:
+      'Cập nhật trạng thái xử lý đơn; vận chuyển/giao hàng đi qua Shipment',
   })
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -100,22 +131,26 @@ export class OrdersController {
     @CurrentUser() user: RequestUser,
     @Req() req: Request,
   ) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      || req.socket?.remoteAddress;
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress;
     return this.ordersService.updateOrderStatus(id, dto, user, ip);
   }
 
   // ── Cancel (Customer self-cancel) ─────────────────────────────────────────
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Hủy đơn hàng (khách hàng tự hủy khi PENDING/CONFIRMED)' })
+  @ApiOperation({
+    summary: 'Hủy đơn hàng (khách hàng tự hủy khi PENDING/CONFIRMED)',
+  })
   async cancelOrder(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
     @Req() req: Request,
   ) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      || req.socket?.remoteAddress;
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress;
     return this.ordersService.cancelOrder(id, user, ip);
   }
 }

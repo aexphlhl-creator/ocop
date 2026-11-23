@@ -1,8 +1,16 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CertificateStatus, Prisma, RoleName } from '@prisma/client';
 import { createPaginationResponse } from '../../common/pagination/pagination.helper';
 import { RequestUser } from '../auth/interfaces/jwt-payload.interface';
 import { BlockchainQueueService } from '../blockchain-queue/blockchain-queue.service';
+import { BlockchainJobType } from '../blockchain-queue/blockchain.queue';
+import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesRepository } from './certificates.repository';
 import { CreateCertificateDto } from './dto/create-certificate.dto';
 import { GetCertificatesQueryDto } from './dto/get-certificates-query.dto';
@@ -10,11 +18,14 @@ import { UpdateCertificateDto } from './dto/update-certificate.dto';
 import { STORAGE_PROVIDER } from './storage/storage-provider.interface';
 import type { StorageProvider } from './storage/storage-provider.interface';
 
+type CertificateWithFiles = { files?: Array<{ fileUrl: string }> };
+
 @Injectable()
 export class CertificatesService {
   constructor(
     private readonly certificatesRepository: CertificatesRepository,
     private readonly blockchainQueueService: BlockchainQueueService,
+    private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
   ) {}
@@ -38,22 +49,36 @@ export class CertificatesService {
       search: query.search,
       userContext: currentUser,
     });
-    return createPaginationResponse(await this.attachDownloadUrls(items), total, page, limit);
+    return createPaginationResponse(
+      await this.attachDownloadUrls(items),
+      total,
+      page,
+      limit,
+    );
   }
 
   async findOne(id: string, currentUser: RequestUser) {
-    const certificate = await this.certificatesRepository.findById(id, currentUser);
+    const certificate = await this.certificatesRepository.findById(
+      id,
+      currentUser,
+    );
     if (!certificate) {
       throw new NotFoundException('Không tìm thấy chứng nhận');
     }
     return this.attachDownloadUrls(certificate);
   }
 
-  async create(dto: CreateCertificateDto, files: Express.Multer.File[], currentUser: RequestUser) {
+  async create(
+    dto: CreateCertificateDto,
+    files: Express.Multer.File[],
+    currentUser: RequestUser,
+  ) {
     await this.validateReferences(dto, currentUser, true);
     const storedFiles = await this.storeFiles(files);
     if (storedFiles.length === 0) {
-      throw new BadRequestException('Cần tải lên ít nhất một file chứng nhận để tạo documentHash');
+      throw new BadRequestException(
+        'Cần tải lên ít nhất một file chứng nhận để tạo documentHash',
+      );
     }
 
     const data: Prisma.CertificateCreateInput = {
@@ -70,14 +95,54 @@ export class CertificatesService {
       product: dto.productId ? { connect: { id: dto.productId } } : undefined,
       batch: dto.batchId ? { connect: { id: dto.batchId } } : undefined,
       files: {
-        create: storedFiles.map(({ documentHash: _documentHash, ...file }) => file),
+        create: storedFiles.map(
+          ({ fileName, fileUrl, mimeType, fileSize }) => ({
+            fileName,
+            fileUrl,
+            mimeType,
+            fileSize,
+          }),
+        ),
       },
     };
 
-    const certificate = await this.certificatesRepository.create(data);
-    this.enqueueCertificateRecord(certificate, currentUser.id);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const certificate = await this.certificatesRepository.create(data, tx);
+      const productId = await this.resolveCertificateProductId(certificate, tx);
+      let outboxRecordId: string | null = null;
 
-    return this.attachDownloadUrls(certificate);
+      if (productId) {
+        const outboxRecord = await this.blockchainQueueService.createOutboxRecord(tx, {
+          productId,
+          certificateId: certificate.id,
+          batchId: certificate.batchId,
+          action: BlockchainJobType.CERTIFICATE_RECORD,
+          data: {
+            certificateId: certificate.id,
+            productId,
+            batchId: certificate.batchId,
+            documentHash: certificate.documentHash,
+            actorId: currentUser.id,
+          },
+        });
+        outboxRecordId = outboxRecord.id;
+      }
+
+      return { certificate, productId, outboxRecordId };
+    });
+
+    if (result.outboxRecordId && result.productId) {
+      void this.blockchainQueueService.enqueueOutboxRecord(result.outboxRecordId, {
+        type: BlockchainJobType.CERTIFICATE_RECORD,
+        certificateId: result.certificate.id,
+        productId: result.productId,
+        batchId: result.certificate.batchId ?? undefined,
+        documentHash: result.certificate.documentHash,
+        actorId: currentUser.id,
+      });
+    }
+
+    return this.attachDownloadUrls(result.certificate);
   }
 
   async update(
@@ -98,20 +163,40 @@ export class CertificatesService {
       status: dto.status,
       verificationUrl: dto.verificationUrl,
       note: dto.note,
-      certificateType: dto.certificateTypeId ? { connect: { id: dto.certificateTypeId } } : undefined,
-      product: dto.productId !== undefined
-        ? dto.productId ? { connect: { id: dto.productId } } : { disconnect: true }
+      certificateType: dto.certificateTypeId
+        ? { connect: { id: dto.certificateTypeId } }
         : undefined,
-      batch: dto.batchId !== undefined
-        ? dto.batchId ? { connect: { id: dto.batchId } } : { disconnect: true }
-        : undefined,
+      product:
+        dto.productId !== undefined
+          ? dto.productId
+            ? { connect: { id: dto.productId } }
+            : { disconnect: true }
+          : undefined,
+      batch:
+        dto.batchId !== undefined
+          ? dto.batchId
+            ? { connect: { id: dto.batchId } }
+            : { disconnect: true }
+          : undefined,
       documentHash: storedFiles[0]?.documentHash ?? existing.documentHash,
-      files: storedFiles.length > 0
-        ? { create: storedFiles.map(({ documentHash: _documentHash, ...file }) => file) }
-        : undefined,
+      files:
+        storedFiles.length > 0
+          ? {
+              create: storedFiles.map(
+                ({ fileName, fileUrl, mimeType, fileSize }) => ({
+                  fileName,
+                  fileUrl,
+                  mimeType,
+                  fileSize,
+                }),
+              ),
+            }
+          : undefined,
     };
 
-    return this.attachDownloadUrls(await this.certificatesRepository.update(id, data));
+    return this.attachDownloadUrls(
+      await this.certificatesRepository.update(id, data),
+    );
   }
 
   async remove(id: string, currentUser: RequestUser) {
@@ -121,20 +206,28 @@ export class CertificatesService {
   }
 
   async findByProduct(productId: string, currentUser: RequestUser) {
-    return this.attachDownloadUrls(await this.certificatesRepository.findByProduct(productId, currentUser));
+    return this.attachDownloadUrls(
+      await this.certificatesRepository.findByProduct(productId, currentUser),
+    );
   }
 
   async findByBatch(batchId: string, currentUser: RequestUser) {
-    return this.attachDownloadUrls(await this.certificatesRepository.findByBatch(batchId, currentUser));
+    return this.attachDownloadUrls(
+      await this.certificatesRepository.findByBatch(batchId, currentUser),
+    );
   }
 
   async findExpiring(daysAhead: number, currentUser: RequestUser) {
-    return this.attachDownloadUrls(await this.certificatesRepository.findExpiring(daysAhead, currentUser));
+    return this.attachDownloadUrls(
+      await this.certificatesRepository.findExpiring(daysAhead, currentUser),
+    );
   }
 
   async cleanup(currentUser: RequestUser) {
     if (currentUser.role !== RoleName.ADMIN) {
-      throw new ForbiddenException('Chỉ ADMIN được phép chạy cleanup certificate storage');
+      throw new ForbiddenException(
+        'Chỉ ADMIN được phép chạy cleanup certificate storage',
+      );
     }
 
     const candidates = await this.certificatesRepository.findSoftDeletedFiles();
@@ -169,11 +262,12 @@ export class CertificatesService {
       userContext: currentUser,
     });
 
-    const byType = activeItems.items.reduce((acc: Record<string, number>, cert: any) => {
+    const countsByType = new Map<string, number>();
+    for (const cert of activeItems.items) {
       const key = cert.certificateType?.name ?? 'Khác';
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {});
+      countsByType.set(key, (countsByType.get(key) ?? 0) + 1);
+    }
+    const byType = Object.fromEntries(countsByType);
 
     return {
       total: all.total,
@@ -188,47 +282,82 @@ export class CertificatesService {
     currentUser: RequestUser,
     requireTarget: boolean,
   ) {
-    if (!requireTarget && dto.productId === undefined && dto.batchId === undefined) {
-      if (dto.certificateTypeId && !(await this.certificatesRepository.certificateTypeExists(dto.certificateTypeId))) {
+    if (
+      !requireTarget &&
+      dto.productId === undefined &&
+      dto.batchId === undefined
+    ) {
+      if (
+        dto.certificateTypeId &&
+        !(await this.certificatesRepository.certificateTypeExists(
+          dto.certificateTypeId,
+        ))
+      ) {
         throw new NotFoundException('Loại chứng nhận không tồn tại');
       }
       return;
     }
     if (!dto.productId && !dto.batchId) {
-      throw new BadRequestException('Chứng nhận phải gắn với Product hoặc Batch');
+      throw new BadRequestException(
+        'Chứng nhận phải gắn với Product hoặc Batch',
+      );
     }
-    if (dto.certificateTypeId && !(await this.certificatesRepository.certificateTypeExists(dto.certificateTypeId))) {
+    if (
+      dto.certificateTypeId &&
+      !(await this.certificatesRepository.certificateTypeExists(
+        dto.certificateTypeId,
+      ))
+    ) {
       throw new NotFoundException('Loại chứng nhận không tồn tại');
     }
-    if (dto.productId && !(await this.certificatesRepository.productExists(dto.productId))) {
+    if (
+      dto.productId &&
+      !(await this.certificatesRepository.productExists(dto.productId))
+    ) {
       throw new NotFoundException('Sản phẩm không tồn tại');
     }
-    if (dto.batchId && !(await this.certificatesRepository.batchExists(dto.batchId))) {
+    if (
+      dto.batchId &&
+      !(await this.certificatesRepository.batchExists(dto.batchId))
+    ) {
       throw new NotFoundException('Batch không tồn tại');
     }
     if (currentUser.role === RoleName.SELLER) {
       const ownsProduct = dto.productId
-        ? await this.certificatesRepository.userOwnsProduct(dto.productId, currentUser.id)
+        ? await this.certificatesRepository.userOwnsProduct(
+            dto.productId,
+            currentUser.id,
+          )
         : true;
       const ownsBatch = dto.batchId
-        ? await this.certificatesRepository.userOwnsBatch(dto.batchId, currentUser.id)
+        ? await this.certificatesRepository.userOwnsBatch(
+            dto.batchId,
+            currentUser.id,
+          )
         : true;
       if (!ownsProduct || !ownsBatch) {
-        throw new ForbiddenException('Bạn không có quyền thao tác chứng nhận này');
+        throw new ForbiddenException(
+          'Bạn không có quyền thao tác chứng nhận này',
+        );
       }
     }
   }
 
   private async storeFiles(files: Express.Multer.File[] = []) {
-    return Promise.all(files.map((file) => this.storageProvider.upload(file, 'certificates')));
+    return Promise.all(
+      files.map((file) => this.storageProvider.upload(file, 'certificates')),
+    );
   }
 
-  private enqueueCertificateRecord(certificate: {
-    id: string;
-    productId: string | null;
-    batchId: string | null;
-    documentHash: string;
-  }, actorId: string) {
+  private enqueueCertificateRecord(
+    certificate: {
+      id: string;
+      productId: string | null;
+      batchId: string | null;
+      documentHash: string;
+    },
+    actorId: string,
+  ) {
     void this.resolveCertificateProductId(certificate)
       .then((productId) => {
         if (!productId) {
@@ -246,10 +375,13 @@ export class CertificatesService {
       .catch(() => undefined);
   }
 
-  private async resolveCertificateProductId(certificate: {
-    productId: string | null;
-    batchId: string | null;
-  }) {
+  private async resolveCertificateProductId(
+    certificate: {
+      productId: string | null;
+      batchId: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ) {
     if (certificate.productId) {
       return certificate.productId;
     }
@@ -257,18 +389,40 @@ export class CertificatesService {
       return null;
     }
 
-    return this.certificatesRepository.findProductIdByBatchId(certificate.batchId);
-  }
-
-  private async attachDownloadUrls<T>(payload: T): Promise<T> {
-    if (Array.isArray(payload)) {
-      return Promise.all(payload.map((item) => this.attachDownloadUrlsToCertificate(item))) as Promise<T>;
+    if (tx) {
+      const batch = await tx.inventoryBatch.findUnique({
+        where: { id: certificate.batchId },
+        select: { inventory: { select: { productId: true } } },
+      });
+      return batch?.inventory.productId ?? null;
     }
-    return this.attachDownloadUrlsToCertificate(payload) as Promise<T>;
+
+    return this.certificatesRepository.findProductIdByBatchId(
+      certificate.batchId,
+    );
   }
 
-  private async attachDownloadUrlsToCertificate<T>(certificate: T): Promise<T> {
-    const target = certificate as any;
+  private attachDownloadUrls<T extends CertificateWithFiles>(
+    payload: T[],
+  ): Promise<T[]>;
+  private attachDownloadUrls<T extends CertificateWithFiles>(
+    payload: T,
+  ): Promise<T>;
+  private attachDownloadUrls<T extends CertificateWithFiles>(
+    payload: T | T[],
+  ): Promise<T | T[]> {
+    if (Array.isArray(payload)) {
+      return Promise.all(
+        payload.map((item) => this.attachDownloadUrlsToCertificate(item)),
+      );
+    }
+    return this.attachDownloadUrlsToCertificate(payload);
+  }
+
+  private async attachDownloadUrlsToCertificate<T extends CertificateWithFiles>(
+    certificate: T,
+  ): Promise<T> {
+    const target = certificate;
     if (!target?.files || !Array.isArray(target.files)) {
       return certificate;
     }
@@ -276,7 +430,7 @@ export class CertificatesService {
     return {
       ...target,
       files: await Promise.all(
-        target.files.map(async (file: any) => ({
+        target.files.map(async (file) => ({
           ...file,
           fileUrl: await this.storageProvider.getDownloadUrl(file.fileUrl),
         })),

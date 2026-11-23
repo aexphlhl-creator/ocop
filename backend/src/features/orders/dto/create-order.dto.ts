@@ -1,5 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsNumber, Min, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  Min,
+  IsEnum,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '@prisma/client';
 
@@ -16,10 +26,10 @@ export class OrderItemDto {
 }
 
 export class CreateOrderDto {
-  @ApiProperty({ description: 'ID của Doanh nghiệp / Chủ thể' })
-  @IsUUID('4', { message: 'businessId phải là định dạng UUID' })
+  @ApiProperty({ description: 'ID tài khoản SELLER' })
+  @IsUUID('4', { message: 'sellerId phải là định dạng UUID' })
   @IsNotEmpty()
-  businessId: string;
+  sellerId: string;
 
   @ApiProperty({ description: 'Địa chỉ giao hàng' })
   @IsString()

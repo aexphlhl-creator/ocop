@@ -1,5 +1,9 @@
 'use client';
 
+import type { NewsArticle, QueryParams } from '@/types/catalog';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -22,10 +26,14 @@ export default function NewsPage() {
   const { data: newsData, isLoading } = useQuery({
     queryKey: ['publicNewsList', search, page],
     queryFn: async () => {
-      const params: any = { page, limit, status: 'PUBLISHED' };
+      const params: QueryParams = { page, limit, status: 'PUBLISHED' };
       if (search) params.keyword = search;
       const res = await api.get('/api/v1/news', { params });
-      return res.data.data;
+      const raw = res.data;
+      const rawData = raw?.data;
+      const items = Array.isArray(rawData) ? rawData : (rawData?.items || raw?.items || []);
+      const meta = raw?.meta || rawData?.meta || { totalPages: Math.ceil(items.length / limit) || 1 };
+      return { items, meta };
     },
   });
 
@@ -60,7 +68,7 @@ export default function NewsPage() {
         </div>
       ) : newsList.length > 0 ? (
         <div className="flex flex-col gap-4">
-          {newsList.map((article: any, idx: number) => (
+          {newsList.map((article: NewsArticle, idx: number) => (
             <motion.div
               key={article.id}
               initial={{ opacity: 0, y: 16 }}
@@ -71,7 +79,7 @@ export default function NewsPage() {
                 <div className="flex flex-col sm:flex-row">
                   {/* Thumbnail */}
                   <div className="relative h-48 sm:h-auto sm:w-56 shrink-0 overflow-hidden bg-slate-100 dark:bg-slate-800">
-                    <img
+                    <AssetImage
                       src={article.thumbnail || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80'}
                       alt={article.title}
                       className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"

@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { MovementType } from '@prisma/client';
 
@@ -49,7 +49,10 @@ export class GetMovementQueryDto {
   @Type(() => Number)
   limit: number = 30;
 
-  @ApiPropertyOptional({ enum: MovementType, description: 'Lọc theo loại phiếu' })
+  @ApiPropertyOptional({
+    enum: MovementType,
+    description: 'Lọc theo loại phiếu',
+  })
   @IsEnum(MovementType)
   @IsOptional()
   movementType?: MovementType;

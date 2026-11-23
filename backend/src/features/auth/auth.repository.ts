@@ -7,8 +7,8 @@ export class AuthRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
-      where: { email },
+    return this.prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
       include: { role: true },
     });
   }
@@ -26,22 +26,54 @@ export class AuthRepository {
     });
   }
 
-  async createUser(data: Prisma.UserCreateWithoutRoleInput, roleId: string) {
+  async createUser(
+    data: Prisma.UserCreateWithoutRoleInput,
+    roleId: string,
+    roleName?: RoleName,
+  ) {
     return this.prisma.user.create({
       data: {
         ...data,
         role: {
           connect: { id: roleId },
         },
+        ...(roleName === RoleName.SELLER
+          ? {
+              sellerProfile: {
+                create: {
+                  displayName: data.fullName,
+                  phone: data.phone ?? null,
+                  email: data.email,
+                },
+              },
+            }
+          : {}),
       },
-      include: { role: true },
+      include: { role: true, sellerProfile: true },
     });
   }
 
-  async updatePassword(id: string, passwordHash: string) {
+  async updatePassword(
+    id: string,
+    passwordHash: string,
+    mustChangePassword = false,
+    revokeSessions = false,
+  ) {
     return this.prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        mustChangePassword,
+        ...(revokeSessions ? { sessionVersion: { increment: 1 } } : {}),
+      },
+    });
+  }
+
+  async updateProfile(id: string, fullName: string, phone?: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { fullName, phone: phone?.trim() || null },
+      include: { role: true },
     });
   }
 }

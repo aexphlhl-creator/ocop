@@ -13,6 +13,7 @@ export class ProductsRepository {
     categoryId?: string;
     provinceId?: string;
     wardId?: string;
+    sellerId?: string;
     businessId?: string;
     ocopLevelId?: string;
     status?: ProductStatus;
@@ -44,6 +45,9 @@ export class ProductsRepository {
     if (params.wardId) {
       where.wardId = params.wardId;
     }
+    if (params.sellerId) {
+      where.sellerId = params.sellerId;
+    }
     if (params.businessId) {
       where.businessId = params.businessId;
     }
@@ -69,6 +73,7 @@ export class ProductsRepository {
     if (!role || role === RoleName.VISITOR) {
       // Visitor chỉ nhìn thấy APPROVED
       where.status = ProductStatus.APPROVED;
+      where.seller = { isActive: true };
     } else if (role === RoleName.SELLER) {
       // Seller xem được APPROVED toàn hệ thống, hoặc PENDING/REJECTED của chính mình
       const statusFilter = params.status;
@@ -77,13 +82,13 @@ export class ProductsRepository {
           where.status = ProductStatus.APPROVED;
         } else {
           where.status = statusFilter;
-          where.business = { userId };
+          where.sellerId = userId;
         }
       } else {
         where.OR = [
           ...(where.OR || []),
           { status: ProductStatus.APPROVED },
-          { business: { userId } },
+          { sellerId: userId },
         ];
       }
     } else if (role === RoleName.ADMIN) {
@@ -115,13 +120,13 @@ export class ProductsRepository {
         include: {
           category: true,
           ocopLevel: true,
-          business: {
+          seller: {
             select: {
               id: true,
-              name: true,
-              userId: true,
-              address: true,
+              fullName: true,
+              email: true,
               phone: true,
+              sellerProfile: true,
             },
           },
           province: {
@@ -152,9 +157,7 @@ export class ProductsRepository {
   }) {
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
-      business: {
-        userId: params.sellerId,
-      },
+      sellerId: params.sellerId,
     };
 
     const [items, total] = await Promise.all([
@@ -166,7 +169,7 @@ export class ProductsRepository {
         include: {
           category: true,
           ocopLevel: true,
-          business: true,
+          seller: { include: { sellerProfile: true } },
           province: true,
           ward: true,
           images: true,
@@ -178,22 +181,27 @@ export class ProductsRepository {
     return { items, total };
   }
 
-  async findById(id: string) {
+  async findById(idOrSlug: string) {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        idOrSlug,
+      );
     return this.prisma.product.findFirst({
       where: {
-        id,
         deletedAt: null,
+        ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }),
       },
       include: {
         category: true,
         ocopLevel: true,
-        business: {
+        seller: {
           select: {
             id: true,
-            name: true,
-            userId: true,
-            address: true,
+            fullName: true,
+            email: true,
             phone: true,
+            isActive: true,
+            sellerProfile: true,
           },
         },
         province: {
@@ -213,6 +221,101 @@ export class ProductsRepository {
     });
   }
 
+  async calculateAvailableStock(
+    productId: string,
+    sellerId?: string,
+  ): Promise<number> {
+    const inventories = await this.prisma.inventory.findMany({
+      where: {
+        productId,
+        warehouse: {
+          isActive: true,
+          ...(sellerId ? { sellerId } : {}),
+        },
+      },
+      select: { id: true },
+    });
+
+    const inventoryIds = inventories.map((i) => i.id);
+    if (inventoryIds.length === 0) return 0;
+
+    const batches = await this.prisma.inventoryBatch.findMany({
+      where: {
+        inventoryId: { in: inventoryIds },
+        status: 'ACTIVE',
+        qualityStatus: 'PASSED',
+        lifecycleStatus: 'RELEASED',
+        quantity: { gt: 0 },
+        OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+      },
+      select: {
+        quantity: true,
+        orderItemReservations: {
+          where: { status: 'ACTIVE' },
+          select: { quantity: true },
+        },
+      },
+    });
+
+    let totalAvailable = 0;
+    for (const batch of batches) {
+      const reserved = batch.orderItemReservations.reduce(
+        (sum, r) => sum + r.quantity,
+        0,
+      );
+      totalAvailable += Math.max(0, batch.quantity - reserved);
+    }
+
+    return totalAvailable;
+  }
+
+  async calculateBatchAvailableStock(
+    productIds: string[],
+  ): Promise<Map<string, number>> {
+    const stockMap = new Map<string, number>();
+    for (const id of productIds) stockMap.set(id, 0);
+    if (productIds.length === 0) return stockMap;
+
+    const batches = await this.prisma.inventoryBatch.findMany({
+      where: {
+        inventory: {
+          productId: { in: productIds },
+          warehouse: { isActive: true },
+        },
+        status: 'ACTIVE',
+        qualityStatus: 'PASSED',
+        lifecycleStatus: 'RELEASED',
+        quantity: { gt: 0 },
+        OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+      },
+      select: {
+        quantity: true,
+        inventory: {
+          select: {
+            productId: true,
+            warehouse: { select: { sellerId: true } },
+          },
+        },
+        orderItemReservations: {
+          where: { status: 'ACTIVE' },
+          select: { quantity: true },
+        },
+      },
+    });
+
+    for (const batch of batches) {
+      const productId = batch.inventory.productId;
+      const reserved = batch.orderItemReservations.reduce(
+        (sum, r) => sum + r.quantity,
+        0,
+      );
+      const available = Math.max(0, batch.quantity - reserved);
+      stockMap.set(productId, (stockMap.get(productId) ?? 0) + available);
+    }
+
+    return stockMap;
+  }
+
   async findBySlug(slug: string) {
     return this.prisma.product.findFirst({
       where: {
@@ -222,29 +325,37 @@ export class ProductsRepository {
     });
   }
 
-  async create(data: Prisma.ProductCreateWithoutImagesInput, imageUrls?: string[]) {
+  async create(
+    data: Prisma.ProductCreateWithoutImagesInput,
+    imageUrls?: string[],
+  ) {
     return this.prisma.product.create({
       data: {
         ...data,
-        images: imageUrls && imageUrls.length > 0
-          ? {
-              create: imageUrls.map((url, index) => ({
-                imageUrl: url,
-                isPrimary: index === 0,
-              })),
-            }
-          : undefined,
+        images:
+          imageUrls && imageUrls.length > 0
+            ? {
+                create: imageUrls.map((url, index) => ({
+                  imageUrl: url,
+                  isPrimary: index === 0,
+                })),
+              }
+            : undefined,
       },
       include: {
         category: true,
         ocopLevel: true,
-        business: true,
+        seller: { include: { sellerProfile: true } },
         images: true,
       },
     });
   }
 
-  async update(id: string, data: Prisma.ProductUpdateWithoutImagesInput, imageUrls?: string[]) {
+  async update(
+    id: string,
+    data: Prisma.ProductUpdateWithoutImagesInput,
+    imageUrls?: string[],
+  ) {
     if (imageUrls) {
       await this.prisma.productImage.deleteMany({
         where: { productId: id },
@@ -255,19 +366,20 @@ export class ProductsRepository {
       where: { id },
       data: {
         ...data,
-        images: imageUrls && imageUrls.length > 0
-          ? {
-              create: imageUrls.map((url, index) => ({
-                imageUrl: url,
-                isPrimary: index === 0,
-              })),
-            }
-          : undefined,
+        images:
+          imageUrls && imageUrls.length > 0
+            ? {
+                create: imageUrls.map((url, index) => ({
+                  imageUrl: url,
+                  isPrimary: index === 0,
+                })),
+              }
+            : undefined,
       },
       include: {
         category: true,
         ocopLevel: true,
-        business: true,
+        seller: { include: { sellerProfile: true } },
         images: true,
       },
     });
@@ -285,9 +397,14 @@ export class ProductsRepository {
         where: { id: params.productId },
         data: {
           status: params.newStatus,
-          approvedAt: params.newStatus === ProductStatus.APPROVED ? new Date() : null,
-          approvedById: params.newStatus === ProductStatus.APPROVED ? params.adminId : null,
-          rejectReason: params.newStatus === ProductStatus.REJECTED ? params.reason || null : null,
+          approvedAt:
+            params.newStatus === ProductStatus.APPROVED ? new Date() : null,
+          approvedById:
+            params.newStatus === ProductStatus.APPROVED ? params.adminId : null,
+          rejectReason:
+            params.newStatus === ProductStatus.REJECTED
+              ? params.reason || null
+              : null,
         },
       });
 
@@ -312,14 +429,23 @@ export class ProductsRepository {
     });
   }
 
-  async checkBusinessOwnership(businessId: string, userId: string): Promise<boolean> {
+  async findSellerIdByLegacyBusiness(businessId: string) {
     const business = await this.prisma.business.findFirst({
       where: {
         id: businessId,
-        userId,
+        deletedAt: null,
       },
+      select: { userId: true },
     });
-    return !!business;
+    return business?.userId ?? null;
+  }
+
+  async isActiveSeller(userId: string): Promise<boolean> {
+    const seller = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true, role: { name: RoleName.SELLER } },
+      select: { id: true },
+    });
+    return !!seller;
   }
 
   async incrementViewCount(productId: string) {

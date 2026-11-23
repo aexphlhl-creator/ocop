@@ -53,7 +53,7 @@ export async function seedUsers(
     },
     {
       email: 'seller1@ocop.gov.vn',
-      fullName: 'Doanh nghiệp Bắc Bộ',
+      fullName: 'Hợp tác xã Gốm sứ Bát Tràng',
       passwordHash: sellerPasswordHash1,
       phone: '0987654321',
       roleId: sellerRole.id,
@@ -61,9 +61,25 @@ export async function seedUsers(
     },
     {
       email: 'seller2@ocop.gov.vn',
-      fullName: 'Hợp tác xã Lâm Đồng',
+      fullName: 'Hợp tác xã Mỳ gạo Hùng Lô',
       passwordHash: sellerPasswordHash2,
       phone: '0909090909',
+      roleId: sellerRole.id,
+      isActive: true,
+    },
+    {
+      email: 'seller3@ocop.gov.vn',
+      fullName: 'Đà Lạt Gift',
+      passwordHash: sellerPasswordHash2,
+      phone: '0909090910',
+      roleId: sellerRole.id,
+      isActive: true,
+    },
+    {
+      email: 'seller4@ocop.gov.vn',
+      fullName: 'Cơ sở sản xuất muối Cần Giờ Hải Nam',
+      passwordHash: sellerPasswordHash2,
+      phone: '0909090911',
       roleId: sellerRole.id,
       isActive: true,
     },
@@ -81,6 +97,22 @@ export async function seedUsers(
       },
       create: user,
     });
+    if (user.roleId === sellerRole.id) {
+      await prisma.sellerProfile.upsert({
+        where: { sellerId: createdUser.id },
+        update: {
+          displayName: user.fullName,
+          phone: user.phone,
+          email: user.email,
+        },
+        create: {
+          sellerId: createdUser.id,
+          displayName: user.fullName,
+          phone: user.phone,
+          email: user.email,
+        },
+      });
+    }
     usersMap[user.email] = createdUser;
   }
   return usersMap;

@@ -1,5 +1,9 @@
 'use client';
 
+import type { Product, ProductImage } from '@/types/catalog';
+
+import { AssetImage } from '@/components/ui/asset-image';
+
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -26,7 +30,7 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const { addItem } = useCart();
 
-  const { data: product, isLoading, isError } = useQuery({
+  const { data: product, isLoading, isError } = useQuery<Product>({
     queryKey: ['productDetail', id],
     queryFn: async () => {
       const res = await api.get(`/api/v1/products/${id}`);
@@ -71,8 +75,14 @@ export default function ProductDetailPage() {
   }
 
   const images = product.images && product.images.length > 0
-    ? product.images.sort((a: any, b: any) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
+    ? product.images.sort((a: ProductImage, b: ProductImage) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
     : [{ imageUrl: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?auto=format&fit=crop&w=800&q=80', isPrimary: true }];
+  const sellerId = product.sellerId ?? product.seller?.id;
+  const sellerProfile = product.seller?.sellerProfile;
+  const sellerName = sellerProfile?.displayName ?? product.seller?.fullName ?? 'Người bán OCOP';
+  const sellerPhone = sellerProfile?.phone ?? product.seller?.phone;
+  const sellerEmail = sellerProfile?.email ?? product.seller?.email;
+  const sellerAddress = sellerProfile?.address;
 
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8 lg:py-12 flex flex-col gap-8">
@@ -95,7 +105,7 @@ export default function ProductDetailPage() {
             animate={{ opacity: 1, scale: 1 }}
             className="relative rounded-3xl overflow-hidden aspect-[4/3] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
           >
-            <img
+            <AssetImage
               src={images[activeImageIndex]?.imageUrl}
               alt={product.name}
               className="w-full h-full object-cover transition-all duration-500"
@@ -110,7 +120,7 @@ export default function ProductDetailPage() {
           {/* Thumbnail list */}
           {images.length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {images.map((img: any, idx: number) => (
+              {images.map((img: ProductImage, idx: number) => (
                 <button
                   key={idx}
                   onClick={() => setActiveImageIndex(idx)}
@@ -118,7 +128,7 @@ export default function ProductDetailPage() {
                     activeImageIndex === idx ? 'border-emerald-500 shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <img src={img.imageUrl} alt={`${product.name} ${idx}`} className="w-full h-full object-cover" />
+                  <AssetImage src={img.imageUrl} alt={`${product.name} ${idx}`} className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
@@ -139,7 +149,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-0.5">
                 <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
                 <span className="font-bold text-sm ml-1 text-slate-900 dark:text-white">
-                  {product.averageRating > 0 ? Number(product.averageRating).toFixed(1) : 'Chưa có'}
+                  {(product.averageRating ?? 0) > 0 ? Number(product.averageRating).toFixed(1) : 'Chưa có'}
                 </span>
               </div>
               <span className="text-slate-300 dark:text-slate-600">•</span>
@@ -153,58 +163,100 @@ export default function ProductDetailPage() {
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">/ {product.unit}</span>
             </div>
 
-            {/* Quantity and Add to Cart */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mt-2">
-              <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden h-12 w-32">
-                <button 
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-10 h-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <input 
-                  type="number" 
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full h-full text-center font-bold text-slate-900 dark:text-white bg-transparent border-none focus:ring-0 p-0"
-                />
-                <button 
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-10 h-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <Button 
-                onClick={() => {
-                  addItem({
-                    id: product.id,
-                    name: product.name,
-                    price: Number(product.price),
-                    quantity,
-                    imageUrl: images[0]?.imageUrl,
-                    businessId: product.businessId,
-                    businessName: product.business?.name,
-                  });
-                  toast.success('Đã thêm sản phẩm vào giỏ hàng!');
-                }}
-                className="flex-1 w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all gap-2"
-              >
-                <ShoppingCart className="h-5 w-5" /> Thêm vào giỏ hàng
-              </Button>
+            {/* Tồn kho khả dụng (chỉ tính từ lô đã qua QA & RELEASED) */}
+            <div className="flex items-center gap-2 mt-1">
+              {typeof product.availableStock === 'number' && product.availableStock > 0 ? (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                  ✓ Còn {product.availableStock} {product.unit} có sẵn
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                  ✕ Hết hàng (Chờ lô xuất xưởng mới)
+                </span>
+              )}
             </div>
 
+            {/* Quantity and Add to Cart */}
+            {typeof product.availableStock === 'number' && product.availableStock <= 0 ? (
+              <div className="mt-2 p-3.5 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 font-medium">
+                Sản phẩm hiện đang tạm hết tồn kho khả dụng từ các lô đã đạt kiểm định chất lượng (QA PASSED) và phát hành (RELEASED).
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mt-2">
+                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden h-12 w-32">
+                  <button 
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    className="w-10 h-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <input 
+                    type="number" 
+                    value={quantity}
+                    min={1}
+                    max={product.availableStock ?? 999}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 1;
+                      const max = product.availableStock ?? 999;
+                      setQuantity(Math.max(1, Math.min(max, val)));
+                    }}
+                    className="w-full h-full text-center font-bold text-slate-900 dark:text-white bg-transparent border-none focus:ring-0 p-0"
+                  >
+                  </input>
+                  <button 
+                    onClick={() => {
+                      const max = product.availableStock ?? 999;
+                      setQuantity(Math.min(max, quantity + 1));
+                    }}
+                    className="w-10 h-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <Button 
+                  onClick={() => {
+                    if (!sellerId) {
+                      toast.error('Sản phẩm chưa được gắn với tài khoản người bán hợp lệ.');
+                      return;
+                    }
+                    const maxStock = product.availableStock ?? 0;
+                    if (maxStock <= 0) {
+                      toast.error('Sản phẩm hiện đã hết hàng khả dụng.');
+                      return;
+                    }
+                    if (quantity > maxStock) {
+                      toast.error(`Chỉ còn ${maxStock} sản phẩm có sẵn.`);
+                      return;
+                    }
+                    addItem({
+                      id: product.id,
+                      name: product.name,
+                      price: Number(product.price),
+                      quantity,
+                      imageUrl: images[0]?.imageUrl,
+                      sellerId,
+                      sellerName,
+                    });
+                    toast.success('Đã thêm sản phẩm vào giỏ hàng!');
+                  }}
+                  className="flex-1 w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all gap-2"
+                >
+                  <ShoppingCart className="h-5 w-5" /> Thêm vào giỏ hàng
+                </Button>
+              </div>
+            )}
+
             {/* CTA Buttons */}
-            {product.business?.phone ? (
+            {sellerPhone ? (
               <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                <a href={`https://zalo.me/${product.business.phone.replace(/\\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex-1">
+                <a href={`https://zalo.me/${sellerPhone.replace(/\\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex-1">
                   <Button className="w-full bg-[#0068FF] hover:bg-[#0054cc] text-white flex items-center justify-center gap-2 rounded-xl h-12 shadow-md hover:shadow-lg transition-all text-sm font-bold">
                     <MessageCircle className="h-5 w-5" /> Chat Zalo Mua Hàng
                   </Button>
                 </a>
-                <a href={`tel:${product.business.phone}`} className="flex-1">
+                <a href={`tel:${sellerPhone}`} className="flex-1">
                   <Button variant="outline" className="w-full flex items-center justify-center gap-2 rounded-xl h-12 border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all text-sm font-bold">
-                    <PhoneCall className="h-5 w-5" /> Gọi: {product.business.phone}
+                    <PhoneCall className="h-5 w-5" /> Gọi: {sellerPhone}
                   </Button>
                 </a>
               </div>
@@ -217,7 +269,7 @@ export default function ProductDetailPage() {
 
           <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
 
-          <Link href={`/shops/${product.business?.id}`}>
+          <Link href={`/shops/${sellerId}`}>
             <Card className="hover:border-emerald-500/50 hover:shadow-md transition-all cursor-pointer dark:bg-slate-900 dark:border-slate-800 group rounded-2xl">
               <CardContent className="p-5 flex flex-col gap-4">
                 <div className="flex items-center gap-3">
@@ -226,7 +278,7 @@ export default function ProductDetailPage() {
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 transition-colors">
-                      {product.business?.name}
+                      {sellerName}
                     </h3>
                     <p className="text-xs text-slate-500">Chủ thể sản xuất</p>
                   </div>
@@ -235,18 +287,18 @@ export default function ProductDetailPage() {
                 <div className="flex flex-col gap-2.5 text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-start gap-2">
                     <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-                    <span className="leading-snug">{product.business?.address}, {product.province?.name}</span>
+                    <span className="leading-snug">{[sellerAddress, product.province?.name].filter(Boolean).join(', ') || 'Chưa cập nhật địa chỉ'}</span>
                   </div>
-                  {product.business?.phone && (
+                  {sellerPhone && (
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span>{product.business.phone}</span>
+                      <span>{sellerPhone}</span>
                     </div>
                   )}
-                  {product.business?.email && (
+                  {sellerEmail && (
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span>{product.business.email}</span>
+                      <span>{sellerEmail}</span>
                     </div>
                   )}
                 </div>
@@ -323,9 +375,9 @@ export default function ProductDetailPage() {
                 <ImageIcon className="h-5 w-5 text-emerald-500" /> Thư viện hình ảnh
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {images.slice(1).map((img: any, idx: number) => (
+                {images.slice(1).map((img: ProductImage, idx: number) => (
                   <div key={idx} className="rounded-2xl overflow-hidden aspect-[4/3] border border-slate-200 dark:border-slate-800 group">
-                    <img src={img.imageUrl} alt="Gallery item" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <AssetImage src={img.imageUrl} alt="Gallery item" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   </div>
                 ))}
               </div>

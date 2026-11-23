@@ -13,6 +13,9 @@ generator client {
 enum RoleName {
   ADMIN
   SELLER
+  WAREHOUSE_MANAGER
+  QUALITY_ASSURANCE
+  LOGISTICS
   VISITOR
   EVENT_COORDINATOR
 }
@@ -36,6 +39,7 @@ enum NotificationCampaignStatus {
 
 enum NotificationTarget {
   SELLERS
+  SPECIFIC_SELLERS
   CUSTOMERS
   ALL
   BUSINESSES
@@ -93,7 +97,54 @@ enum PaymentStatus {
   PENDING
   COMPLETED
   FAILED
+  RECONCILIATION_REQUIRED
+  REFUND_PENDING
   REFUNDED
+  REFUND_FAILED
+}
+
+enum PaymentAggregateStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+  RECONCILIATION_REQUIRED
+  REFUND_PENDING
+  REFUNDED
+  REFUND_FAILED
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+  RECONCILIATION_REQUIRED
+}
+
+enum PaymentProvider {
+  NONE
+  VNPAY
+}
+
+enum ReservationStatus {
+  ACTIVE
+  DEDUCTED
+  RELEASED
+}
+
+enum GatewayAttemptStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum RefundType {
+  FULL
+  PARTIAL
 }
 
 enum BatchStatus {
@@ -101,6 +152,19 @@ enum BatchStatus {
   DEPLETED // Lô đã hết
   EXPIRED // Lô đã hết hạn
   RECALLED // Thu hồi
+}
+
+/// Business lifecycle of a lot. BatchStatus remains the physical stock state;
+/// this enum is the release/traceability state and is the sellability source.
+enum BatchLifecycleStatus {
+  DRAFT
+  SUBMITTED
+  QUARANTINED
+  QC_PASSED
+  RELEASED
+  REJECTED
+  RECALLED
+  CLOSED
 }
 
 enum MovementType {
@@ -116,6 +180,98 @@ enum QualityStatus {
   PASSED // Đạt chuẩn
   FAILED // Không đạt
   QUARANTINE // Cách ly kiểm dịch
+}
+
+enum LogisticsAssignmentStatus {
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum LogisticsOrganizationType {
+  INTERNAL
+  THIRD_PARTY
+}
+
+enum ShipmentRouteType {
+  DIRECT_TO_CUSTOMER
+  VIA_DISTRIBUTOR
+  VIA_RETAIL
+  INTERNAL_TRANSFER
+}
+
+enum ShipmentStatus {
+  DRAFT
+  ASSIGNED
+  HANDED_OVER
+  IN_TRANSIT
+  AT_DISTRIBUTOR
+  AT_RETAIL
+  OUT_FOR_DELIVERY
+  DELIVERED
+  DELIVERY_FAILED
+  RETURNING
+  RETURNED
+  CANCELLED
+}
+
+enum ShipmentAssignmentStatus {
+  ASSIGNED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum ShipmentEventType {
+  CREATED
+  ASSIGNED
+  REASSIGNED
+  HANDED_OVER
+  PICKED_UP
+  ARRIVED_DISTRIBUTOR
+  ARRIVED_RETAIL
+  OUT_FOR_DELIVERY
+  DELIVERED
+  DELIVERY_FAILED
+  DELIVERY_RETRIED
+  RETURN_STARTED
+  RETURNED
+  CANCELLED
+}
+
+enum ShipmentEventSource {
+  INTERNAL
+  CARRIER_WEBHOOK
+}
+
+enum CarrierWebhookProcessingStatus {
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum TraceabilityPartyType {
+  PRODUCER
+  FARMER
+  SUPPLIER
+  PROCESSOR
+  DISTRIBUTOR
+  RETAILER
+  CARRIER
+  OTHER
+}
+
+enum TraceabilityLocationType {
+  FARM
+  FIELD
+  COLLECTION_POINT
+  PROCESSING_FACILITY
+  PACKHOUSE
+  WAREHOUSE
+  DISTRIBUTION_CENTER
+  RETAIL_STORE
+  OTHER
 }
 
 enum CertificateStatus {
@@ -150,69 +306,97 @@ model Role {
 }
 
 model User {
-  id                     String                   @id @default(uuid()) @db.Uuid
-  email                  String                   @unique
-  passwordHash           String                   @map("password_hash")
-  fullName               String                   @map("full_name")
-  phone                  String?
-  roleId                 String                   @map("role_id") @db.Uuid
-  role                   Role                     @relation(fields: [roleId], references: [id])
-  isActive               Boolean                  @default(true) @map("is_active")
-  businesses             Business[]
-  news                   News[]
-  approvedProducts       Product[]                @relation("ProductApprovedBy")
-  approvalHistories      ProductApprovalHistory[]
-  notifications          Notification[]
-  orders                 Order[]
-  reviews                ProductReview[]
-  managedWarehouses      Warehouse[]
-  stockMovements         StockMovement[]
-  batchJourneys          BatchJourney[]           @relation("BatchJourneyActor")
-  createdCertificates    Certificate[]            @relation("CertificateCreatedBy")
-  approvedPurchaseOrders PurchaseOrder[]          @relation("POApprovedBy")
-  receivedGoodsReceipts  GoodsReceipt[]           @relation("GoodsReceivedBy")
-  createdEvents          Event[]                  @relation("EventCreatedBy")
-  updatedEvents          Event[]                  @relation("EventUpdatedBy")
-  createdCampaigns       NotificationCampaign[]   @relation("CampaignCreatedBy")
-  campaignRecipients     NotificationRecipient[]
-  createdAt              DateTime                 @default(now()) @map("created_at")
-  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  id                           String                        @id @default(uuid()) @db.Uuid
+  email                        String                        @unique
+  passwordHash                 String                        @map("password_hash")
+  fullName                     String                        @map("full_name")
+  phone                        String?
+  roleId                       String                        @map("role_id") @db.Uuid
+  role                         Role                          @relation(fields: [roleId], references: [id])
+  isActive                     Boolean                       @default(true) @map("is_active")
+  mustChangePassword           Boolean                       @default(false) @map("must_change_password")
+  sessionVersion               Int                           @default(0) @map("session_version")
+  businesses                   Business[]
+  sellerProfile                SellerProfile?                @relation("SellerProfileOwner")
+  sellerProducts               Product[]                     @relation("SellerProducts")
+  sellerOrders                 Order[]                       @relation("SellerOrders")
+  sellerVouchers               Voucher[]                     @relation("SellerVouchers")
+  sellerUpgradeRequests        OcopUpgradeRequest[]          @relation("SellerUpgradeRequests")
+  sellerWarehouses             Warehouse[]                   @relation("SellerWarehouses")
+  sellerSuppliers              Supplier[]                    @relation("SellerSuppliers")
+  sellerPurchaseOrders         PurchaseOrder[]               @relation("SellerPurchaseOrders")
+  sellerGoodsReceipts          GoodsReceipt[]                @relation("SellerGoodsReceipts")
+  news                         News[]
+  approvedProducts             Product[]                     @relation("ProductApprovedBy")
+  approvalHistories            ProductApprovalHistory[]
+  notifications                Notification[]
+  orders                       Order[]
+  reviews                      ProductReview[]
+  managedWarehouses            Warehouse[]
+  stockMovements               StockMovement[]
+  batchJourneys                BatchJourney[]                @relation("BatchJourneyActor")
+  declaredInventoryBatches     InventoryBatch[]              @relation("InventoryBatchDeclaredBy")
+  batchLifecycleEvents         BatchLifecycleEvent[]         @relation("BatchLifecycleEventActor")
+  logisticsAssignments         BatchLogisticsAssignment[]    @relation("LogisticsAssignee")
+  assignedLogisticsJobs        BatchLogisticsAssignment[]    @relation("LogisticsAssignedBy")
+  logisticsMemberships         LogisticsOrganizationMember[]
+  createdShipments             Shipment[]                    @relation("ShipmentCreatedBy")
+  shipmentAssignments          ShipmentAssignment[]          @relation("ShipmentAssignee")
+  assignedShipments            ShipmentAssignment[]          @relation("ShipmentAssignedBy")
+  shipmentEvents               ShipmentEvent[]               @relation("ShipmentEventActor")
+  createdTraceabilityParties   TraceabilityParty[]           @relation("TraceabilityPartyCreatedBy")
+  verifiedTraceabilityParties  TraceabilityParty[]           @relation("TraceabilityPartyVerifiedBy")
+  createdTraceabilityLocations TraceabilityLocation[]        @relation("TraceabilityLocationCreatedBy")
+  declaredBatchOrigins         BatchOriginDeclaration[]      @relation("BatchOriginDeclaredBy")
+  createdBatchMaterialLinks    BatchMaterialLink[]           @relation("BatchMaterialLinkCreatedBy")
+  createdCertificates          Certificate[]                 @relation("CertificateCreatedBy")
+  approvedPurchaseOrders       PurchaseOrder[]               @relation("POApprovedBy")
+  receivedGoodsReceipts        GoodsReceipt[]                @relation("GoodsReceivedBy")
+  createdEvents                Event[]                       @relation("EventCreatedBy")
+  updatedEvents                Event[]                       @relation("EventUpdatedBy")
+  createdCampaigns             NotificationCampaign[]        @relation("CampaignCreatedBy")
+  campaignRecipients           NotificationRecipient[]
+  paymentAggregates            PaymentAggregate[]            @relation("UserPaymentAggregates")
+  createdAt                    DateTime                      @default(now()) @map("created_at")
+  updatedAt                    DateTime                      @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
 model Province {
-  id          String     @id @default(uuid()) @db.Uuid
-  name        String     @unique
-  code        String     @unique // Mã hành chính chính thức (ví dụ: '01', '79')
-  latitude    Float
-  longitude   Float
-  geojsonPath String?    @map("geojson_path")
-  bounds      Json?
-  wards       Ward[]
-  businesses  Business[]
-  products    Product[]
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String          @unique
+  code           String          @unique // Mã hành chính chính thức (ví dụ: '01', '79')
+  latitude       Float
+  longitude      Float
+  geojsonPath    String?         @map("geojson_path")
+  bounds         Json?
+  wards          Ward[]
+  businesses     Business[]
+  sellerProfiles SellerProfile[]
+  products       Product[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   @@map("provinces")
 }
 
 model Ward {
-  id          String     @id @default(uuid()) @db.Uuid
-  name        String
-  provinceId  String     @map("province_id") @db.Uuid
-  province    Province   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
-  latitude    Float
-  longitude   Float
-  avatar      String? // Ảnh đại diện xã
-  description String?    @db.Text
-  geojsonPath String?    @map("geojson_path")
-  bounds      Json?
-  businesses  Business[]
-  products    Product[]
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String
+  provinceId     String          @map("province_id") @db.Uuid
+  province       Province        @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  latitude       Float
+  longitude      Float
+  avatar         String? // Ảnh đại diện xã
+  description    String?         @db.Text
+  geojsonPath    String?         @map("geojson_path")
+  bounds         Json?
+  businesses     Business[]
+  sellerProfiles SellerProfile[]
+  products       Product[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   @@unique([provinceId, name])
   @@index([provinceId])
@@ -247,11 +431,42 @@ model Business {
   suppliers      Supplier[]
   purchaseOrders PurchaseOrder[]
   goodsReceipts  GoodsReceipt[]
+  sellerProfile  SellerProfile?       @relation("SellerProfileLegacyBusiness")
 
   @@index([userId])
   @@index([wardId])
   @@index([provinceId])
   @@map("businesses")
+}
+
+/// Public and operational profile of a SELLER account.
+/// Business remains only as a temporary legacy source during the migration.
+model SellerProfile {
+  id               String    @id @default(uuid()) @db.Uuid
+  sellerId         String    @unique @map("seller_id") @db.Uuid
+  seller           User      @relation("SellerProfileOwner", fields: [sellerId], references: [id], onDelete: Cascade)
+  displayName      String    @map("display_name")
+  taxCode          String?   @unique @map("tax_code")
+  phone            String?
+  email            String?
+  address          String?
+  description      String?   @db.Text
+  industry         String?
+  avatarUrl        String?   @map("avatar_url")
+  wardId           String?   @map("ward_id") @db.Uuid
+  ward             Ward?     @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  provinceId       String?   @map("province_id") @db.Uuid
+  province         Province? @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  isVerified       Boolean   @default(false) @map("is_verified")
+  legacyBusinessId String?   @unique @map("legacy_business_id") @db.Uuid
+  legacyBusiness   Business? @relation("SellerProfileLegacyBusiness", fields: [legacyBusinessId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([provinceId])
+  @@index([wardId])
+  @@index([isVerified])
+  @@map("seller_profiles")
 }
 
 model Category {
@@ -292,8 +507,10 @@ model Product {
   ocopLevel         OcopLevel                @relation(fields: [ocopLevelId], references: [id])
   categoryId        String                   @map("category_id") @db.Uuid
   category          Category                 @relation(fields: [categoryId], references: [id])
-  businessId        String                   @map("business_id") @db.Uuid
-  business          Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sellerId          String                   @map("seller_id") @db.Uuid
+  seller            User                     @relation("SellerProducts", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId        String?                  @map("business_id") @db.Uuid
+  business          Business?                @relation(fields: [businessId], references: [id], onDelete: SetNull)
   wardId            String                   @map("ward_id") @db.Uuid
   ward              Ward                     @relation(fields: [wardId], references: [id])
   provinceId        String                   @map("province_id") @db.Uuid
@@ -336,6 +553,7 @@ model Product {
   @@index([ocopLevelId])
   @@index([categoryId])
   @@index([businessId])
+  @@index([sellerId])
   @@index([wardId])
   @@index([provinceId])
   @@index([status])
@@ -423,8 +641,10 @@ model Order {
   id              String        @id @default(uuid()) @db.Uuid
   userId          String        @map("user_id") @db.Uuid
   user            User          @relation(fields: [userId], references: [id])
-  businessId      String        @map("business_id") @db.Uuid
-  business        Business      @relation(fields: [businessId], references: [id])
+  sellerId        String        @map("seller_id") @db.Uuid
+  seller          User          @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId      String?       @map("business_id") @db.Uuid
+  business        Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
   totalAmount     Decimal       @map("total_amount") @db.Decimal(12, 2)
   shippingAddress String        @map("shipping_address") @db.Text
   phone           String
@@ -432,6 +652,9 @@ model Order {
   paymentMethod   PaymentMethod @default(COD) @map("payment_method")
   paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
   vnpayTxnRef     String?       @map("vnpay_txn_ref")
+
+  paymentAggregateId String?           @map("payment_aggregate_id") @db.Uuid
+  paymentAggregate   PaymentAggregate? @relation("AggregateOrders", fields: [paymentAggregateId], references: [id], onDelete: Restrict)
 
   platformVoucherId String?  @map("platform_voucher_id") @db.Uuid
   platformVoucher   Voucher? @relation("PlatformVoucherOrders", fields: [platformVoucherId], references: [id])
@@ -442,12 +665,15 @@ model Order {
 
   items     OrderItem[]
   tracking  OrderTracking[]
+  shipments Shipment[]
   createdAt DateTime        @default(now()) @map("created_at")
   updatedAt DateTime        @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([businessId])
+  @@index([sellerId])
   @@index([status])
+  @@index([paymentAggregateId])
   @@index([createdAt])
   @@map("orders")
 }
@@ -485,7 +711,9 @@ model Voucher {
   isActive      Boolean      @default(true) @map("is_active")
 
   businessId String?   @map("business_id") @db.Uuid
-  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  sellerId   String?   @map("seller_id") @db.Uuid
+  seller     User?     @relation("SellerVouchers", fields: [sellerId], references: [id], onDelete: Restrict)
 
   platformOrders Order[] @relation("PlatformVoucherOrders")
   shopOrders     Order[] @relation("ShopVoucherOrders")
@@ -494,27 +722,147 @@ model Voucher {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([businessId])
+  @@index([sellerId])
   @@index([code])
   @@map("vouchers")
 }
 
 model OrderItem {
-  id              String          @id @default(uuid()) @db.Uuid
-  orderId         String          @map("order_id") @db.Uuid
-  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId       String          @map("product_id") @db.Uuid
-  product         Product         @relation(fields: [productId], references: [id])
-  quantity        Int
-  price           Decimal         @db.Decimal(12, 2)
-  // Inventory tracking fields
-  reservedBatchId String?         @map("reserved_batch_id") @db.Uuid // Lô được reserve khi đặt hàng
-  reservedBatch   InventoryBatch? @relation("OrderItemReservedBatch", fields: [reservedBatchId], references: [id])
-  createdAt       DateTime        @default(now()) @map("created_at")
+  id                String                      @id @default(uuid()) @db.Uuid
+  orderId           String                      @map("order_id") @db.Uuid
+  order             Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String                      @map("product_id") @db.Uuid
+  product           Product                     @relation(fields: [productId], references: [id])
+  quantity          Int
+  price             Decimal                     @db.Decimal(12, 2)
+  batchReservations OrderItemBatchReservation[] @relation("OrderItemReservations")
+  shipmentItems     ShipmentItem[]
+  createdAt         DateTime                    @default(now()) @map("created_at")
 
   @@index([orderId])
   @@index([productId])
-  @@index([reservedBatchId])
   @@map("order_items")
+}
+
+model PaymentAggregate {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  userId               String                 @map("user_id") @db.Uuid
+  user                 User                   @relation("UserPaymentAggregates", fields: [userId], references: [id], onDelete: Restrict)
+  idempotencyKey       String                 @map("idempotency_key") @db.VarChar(100)
+  requestHash          String                 @map("request_hash") @db.VarChar(64)
+  amount               Decimal                @db.Decimal(12, 2)
+  currency             String                 @default("VND") @db.VarChar(3)
+  status               PaymentAggregateStatus @default(PENDING)
+  paymentMethod        PaymentMethod          @map("payment_method")
+  provider             PaymentProvider        @default(NONE)
+  reconciliationReason String?                @map("reconciliation_reason") @db.Text
+  completedAt          DateTime?              @map("completed_at")
+  cancelledAt          DateTime?              @map("cancelled_at")
+  orders               Order[]                @relation("AggregateOrders")
+  transactions         PaymentTransaction[]   @relation("AggregateTransactions")
+  refundAttempts       RefundAttempt[]        @relation("AggregateRefunds")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  @@unique([userId, idempotencyKey])
+  @@index([idempotencyKey])
+  @@index([status, updatedAt])
+  @@map("payment_aggregates")
+}
+
+model PaymentTransaction {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  paymentAggregateId String                   @map("payment_aggregate_id") @db.Uuid
+  paymentAggregate   PaymentAggregate         @relation("AggregateTransactions", fields: [paymentAggregateId], references: [id], onDelete: Restrict)
+  txnRef             String                   @unique @map("txn_ref") @db.VarChar(100)
+  amount             Decimal                  @db.Decimal(12, 2)
+  receivedAmount     Decimal?                 @map("received_amount") @db.Decimal(12, 2)
+  currency           String                   @default("VND") @db.VarChar(3)
+  status             PaymentTransactionStatus @default(PENDING)
+  paymentUrl         String                   @map("payment_url") @db.Text
+  gatewayCreateDate  String                   @map("gateway_create_date") @db.VarChar(14)
+  gatewayTxNo        String?                  @unique @map("gateway_tx_no") @db.VarChar(100)
+  responseCode       String?                  @map("response_code") @db.VarChar(10)
+  transactionStatus  String?                  @map("transaction_status") @db.VarChar(10)
+  rawIpnPayload      Json?                    @map("raw_ipn_payload")
+  expiresAt          DateTime                 @map("expires_at")
+  processedAt        DateTime?                @map("processed_at")
+  lastQueriedAt      DateTime?                @map("last_queried_at")
+  queryAttempts      PaymentQueryAttempt[]    @relation("TransactionQueries")
+  refundAttempts     RefundAttempt[]          @relation("TransactionRefunds")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([paymentAggregateId])
+  @@index([status, expiresAt])
+  @@map("payment_transactions")
+}
+
+model PaymentQueryAttempt {
+  id                String               @id @default(uuid()) @db.Uuid
+  transactionId     String               @map("transaction_id") @db.Uuid
+  transaction       PaymentTransaction   @relation("TransactionQueries", fields: [transactionId], references: [id], onDelete: Restrict)
+  requestId         String               @unique @map("request_id") @db.VarChar(32)
+  status            GatewayAttemptStatus @default(PENDING)
+  responseCode      String?              @map("response_code") @db.VarChar(10)
+  transactionStatus String?              @map("transaction_status") @db.VarChar(10)
+  gatewayResponse   Json?                @map("gateway_response")
+  failureReason     String?              @map("failure_reason") @db.Text
+  processedAt       DateTime?            @map("processed_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  @@index([transactionId, createdAt])
+  @@map("payment_query_attempts")
+}
+
+model RefundAttempt {
+  id                 String               @id @default(uuid()) @db.Uuid
+  paymentAggregateId String               @map("payment_aggregate_id") @db.Uuid
+  paymentAggregate   PaymentAggregate     @relation("AggregateRefunds", fields: [paymentAggregateId], references: [id], onDelete: Restrict)
+  transactionId      String               @map("transaction_id") @db.Uuid
+  transaction        PaymentTransaction   @relation("TransactionRefunds", fields: [transactionId], references: [id], onDelete: Restrict)
+  idempotencyKey     String               @map("idempotency_key") @db.VarChar(100)
+  merchantRequestId  String               @unique @map("merchant_request_id") @db.VarChar(32)
+  gatewayRefundTxNo  String?              @unique @map("gateway_refund_tx_no") @db.VarChar(100)
+  refundType         RefundType           @default(FULL) @map("refund_type")
+  amount             Decimal              @db.Decimal(12, 2)
+  currency           String               @default("VND") @db.VarChar(3)
+  status             GatewayAttemptStatus @default(PENDING)
+  responseCode       String?              @map("response_code") @db.VarChar(10)
+  transactionStatus  String?              @map("transaction_status") @db.VarChar(10)
+  gatewayResponse    Json?                @map("gateway_response")
+  retryCount         Int                  @default(0) @map("retry_count")
+  nextRetryAt        DateTime?            @map("next_retry_at")
+  failureReason      String?              @map("failure_reason") @db.Text
+  requestedBy        String               @default("SYSTEM") @map("requested_by") @db.VarChar(100)
+  requestedAt        DateTime             @default(now()) @map("requested_at")
+  processedAt        DateTime?            @map("processed_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@unique([paymentAggregateId, idempotencyKey])
+  @@index([transactionId])
+  @@index([status, nextRetryAt])
+  @@map("refund_attempts")
+}
+
+model OrderItemBatchReservation {
+  id            String            @id @default(uuid()) @db.Uuid
+  orderItemId   String            @map("order_item_id") @db.Uuid
+  orderItem     OrderItem         @relation("OrderItemReservations", fields: [orderItemId], references: [id], onDelete: Restrict)
+  batchId       String            @map("batch_id") @db.Uuid
+  batch         InventoryBatch    @relation("BatchOrderItemReservations", fields: [batchId], references: [id], onDelete: Restrict)
+  quantity      Int
+  status        ReservationStatus @default(ACTIVE)
+  reservedAt    DateTime          @default(now()) @map("reserved_at")
+  deductedAt    DateTime?         @map("deducted_at")
+  releasedAt    DateTime?         @map("released_at")
+  stockMovement StockMovement?
+
+  @@unique([orderItemId, batchId])
+  @@index([batchId, status])
+  @@index([orderItemId, status])
+  @@map("order_item_batch_reservations")
 }
 
 model ProductReview {
@@ -528,6 +876,7 @@ model ProductReview {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([userId, productId])
   @@index([productId])
   @@index([userId])
   @@map("product_reviews")
@@ -541,8 +890,10 @@ model OcopUpgradeRequest {
   currentLevel   OcopLevel     @relation("CurrentLevelUpgrades", fields: [currentLevelId], references: [id])
   targetLevelId  String        @map("target_level_id") @db.Uuid
   targetLevel    OcopLevel     @relation("TargetLevelUpgrades", fields: [targetLevelId], references: [id])
-  businessId     String        @map("business_id") @db.Uuid
-  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sellerId       String        @map("seller_id") @db.Uuid
+  seller         User          @relation("SellerUpgradeRequests", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId     String?       @map("business_id") @db.Uuid
+  business       Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
   status         UpgradeStatus @default(PENDING)
   reason         String?       @db.Text
   documentUrls   String[]      @map("document_urls")
@@ -552,6 +903,7 @@ model OcopUpgradeRequest {
 
   @@index([productId])
   @@index([businessId])
+  @@index([sellerId])
   @@index([status])
   @@map("ocop_upgrade_requests")
 }
@@ -623,18 +975,24 @@ model Warehouse {
   isActive         Boolean       @default(true) @map("is_active")
 
   businessId String?   @map("business_id") @db.Uuid
-  business   Business? @relation(fields: [businessId], references: [id])
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  sellerId   String?   @map("seller_id") @db.Uuid
+  seller     User?     @relation("SellerWarehouses", fields: [sellerId], references: [id], onDelete: Restrict)
 
   managerId String? @map("manager_id") @db.Uuid
   manager   User?   @relation(fields: [managerId], references: [id])
 
-  inventories    Inventory[]
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  purchaseOrders PurchaseOrder[]
-  goodsReceipts  GoodsReceipt[]
+  inventories       Inventory[]
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  purchaseOrders    PurchaseOrder[]
+  goodsReceipts     GoodsReceipt[]
+  outboundShipments Shipment[]      @relation("ShipmentOriginWarehouse")
+  inboundShipments  Shipment[]      @relation("ShipmentDestinationWarehouse")
 
   @@unique([name, businessId])
+  @@unique([name, sellerId])
+  @@index([sellerId])
   @@map("warehouses")
 }
 
@@ -658,53 +1016,103 @@ model Inventory {
 }
 
 model InventoryBatch {
-  id                String             @id @default(uuid()) @db.Uuid
-  inventoryId       String             @map("inventory_id") @db.Uuid
-  inventory         Inventory          @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
-  batchNumber       String             @map("batch_number") // Tự sinh: YYYYMMDD-PRODUCTCODE-SEQ
-  quantity          Int // Số lượng còn lại trong lô
-  initialQuantity   Int                @map("initial_quantity") // Số lượng ban đầu khi nhập
-  manufactureDate   DateTime?          @map("manufacture_date")
-  harvestDate       DateTime?          @map("harvest_date")
-  expiryDate        DateTime?          @map("expiry_date")
-  receivedDate      DateTime           @default(now()) @map("received_date")
-  supplier          String? // Tên nhà cung cấp / nông dân
-  warehouseLocation String?            @map("warehouse_location") // VD: “Kệ A3”, “Kho lạnh”
-  status            BatchStatus        @default(ACTIVE)
-  qualityStatus     QualityStatus      @default(PENDING_CHECK) @map("quality_status")
-  movements         StockMovement[]
-  journeys          BatchJourney[]
-  reservedItems     OrderItem[]        @relation("OrderItemReservedBatch")
-  certificates      Certificate[]
-  createdAt         DateTime           @default(now()) @map("created_at")
-  goodsReceiptItems GoodsReceiptItem[]
+  id                        String                      @id @default(uuid()) @db.Uuid
+  inventoryId               String                      @map("inventory_id") @db.Uuid
+  inventory                 Inventory                   @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  batchNumber               String                      @map("batch_number") // Tự sinh: YYYYMMDD-PRODUCTCODE-SEQ
+  quantity                  Int // Số lượng còn lại trong lô
+  initialQuantity           Int                         @map("initial_quantity") // Số lượng ban đầu khi nhập
+  declaredQuantity          Int                         @map("declared_quantity")
+  lifecycleStatus           BatchLifecycleStatus        @default(DRAFT) @map("lifecycle_status")
+  manufactureDate           DateTime?                   @map("manufacture_date")
+  harvestDate               DateTime?                   @map("harvest_date")
+  expiryDate                DateTime?                   @map("expiry_date")
+  receivedDate              DateTime                    @default(now()) @map("received_date")
+  supplier                  String? // Tên nhà cung cấp / nông dân
+  warehouseLocation         String?                     @map("warehouse_location") // VD: “Kệ A3”, “Kho lạnh”
+  status                    BatchStatus                 @default(ACTIVE)
+  qualityStatus             QualityStatus               @default(PENDING_CHECK) @map("quality_status")
+  declaredById              String?                     @map("declared_by_id") @db.Uuid
+  declaredBy                User?                       @relation("InventoryBatchDeclaredBy", fields: [declaredById], references: [id], onDelete: Restrict)
+  declarationIdempotencyKey String                      @map("declaration_idempotency_key") @db.VarChar(100)
+  parentBatchId             String?                     @map("parent_batch_id") @db.Uuid
+  parentBatch               InventoryBatch?             @relation("InventoryBatchLineage", fields: [parentBatchId], references: [id], onDelete: Restrict)
+  derivedBatches            InventoryBatch[]            @relation("InventoryBatchLineage")
+  submittedAt               DateTime?                   @map("submitted_at")
+  actualReceivedAt          DateTime?                   @map("actual_received_at")
+  inspectedAt               DateTime?                   @map("inspected_at")
+  releasedAt                DateTime?                   @map("released_at")
+  rejectedAt                DateTime?                   @map("rejected_at")
+  movements                 StockMovement[]
+  journeys                  BatchJourney[]
+  logisticsAssignments      BatchLogisticsAssignment[]
+  shipmentItems             ShipmentItem[]
+  originDeclarations        BatchOriginDeclaration[]
+  inputMaterialLinks        BatchMaterialLink[]         @relation("BatchMaterialInput")
+  outputMaterialLinks       BatchMaterialLink[]         @relation("BatchMaterialOutput")
+  orderItemReservations     OrderItemBatchReservation[] @relation("BatchOrderItemReservations")
+  certificates              Certificate[]
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  goodsReceiptItems         GoodsReceiptItem[]
+  lifecycleEvents           BatchLifecycleEvent[]
 
-  // @@unique([inventoryId, batchNumber])
+  @@unique([inventoryId, batchNumber])
+  @@unique([declaredById, declarationIdempotencyKey])
   @@index([inventoryId])
+  @@index([lifecycleStatus])
+  @@index([declaredById])
+  @@index([parentBatchId])
   @@index([expiryDate])
   @@index([status])
   @@map("inventory_batches")
 }
 
+/// Append-only business audit ledger for lot lifecycle transitions.
+model BatchLifecycleEvent {
+  id             String                @id @default(uuid()) @db.Uuid
+  batchId        String                @map("batch_id") @db.Uuid
+  batch          InventoryBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  idempotencyKey String                @map("idempotency_key") @db.VarChar(100)
+  action         String                @db.VarChar(50)
+  fromStatus     BatchLifecycleStatus? @map("from_status")
+  toStatus       BatchLifecycleStatus  @map("to_status")
+  actorId        String                @map("actor_id") @db.Uuid
+  actor          User                  @relation("BatchLifecycleEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+  eventTime      DateTime              @map("event_time")
+  location       String?               @db.Text
+  note           String?               @db.Text
+  imageUrls      String[]              @map("image_urls")
+  attachmentUrls String[]              @map("attachment_urls")
+  metadata       Json?
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@unique([batchId, idempotencyKey])
+  @@index([batchId, eventTime])
+  @@index([actorId, createdAt])
+  @@map("batch_lifecycle_events")
+}
+
 model StockMovement {
-  id             String          @id @default(uuid()) @db.Uuid
-  inventoryId    String          @map("inventory_id") @db.Uuid
-  inventory      Inventory       @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
-  batchId        String?         @map("batch_id") @db.Uuid
-  batch          InventoryBatch? @relation(fields: [batchId], references: [id])
-  movementType   MovementType    @map("movement_type")
+  id             String                     @id @default(uuid()) @db.Uuid
+  inventoryId    String                     @map("inventory_id") @db.Uuid
+  inventory      Inventory                  @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  batchId        String?                    @map("batch_id") @db.Uuid
+  batch          InventoryBatch?            @relation(fields: [batchId], references: [id])
+  movementType   MovementType               @map("movement_type")
   quantity       Int // Dương = nhập, âm = xuất
-  beforeQuantity Int             @map("before_quantity")
-  afterQuantity  Int             @map("after_quantity")
+  beforeQuantity Int                        @map("before_quantity")
+  afterQuantity  Int                        @map("after_quantity")
   // Transfer fields (chỉ dùng khi movementType = TRANSFER)
-  toInventoryId  String?         @map("to_inventory_id") @db.Uuid
-  reason         String?         @db.Text
-  referenceId    String?         @map("reference_id") // VD: orderId, purchaseOrderId
-  referenceType  String?         @map("reference_type") // VD: "ORDER", "PURCHASE"
-  note           String?         @db.Text
-  createdById    String          @map("created_by_id") @db.Uuid
-  createdBy      User            @relation(fields: [createdById], references: [id])
-  createdAt      DateTime        @default(now()) @map("created_at")
+  toInventoryId  String?                    @map("to_inventory_id") @db.Uuid
+  reason         String?                    @db.Text
+  referenceId    String?                    @map("reference_id") // VD: orderId, purchaseOrderId
+  referenceType  String?                    @map("reference_type") // VD: "ORDER", "PURCHASE"
+  note           String?                    @db.Text
+  createdById    String                     @map("created_by_id") @db.Uuid
+  createdBy      User                       @relation(fields: [createdById], references: [id])
+  reservationId  String?                    @unique @map("reservation_id") @db.Uuid
+  reservation    OrderItemBatchReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  createdAt      DateTime                   @default(now()) @map("created_at")
 
   @@index([inventoryId])
   @@index([batchId])
@@ -724,7 +1132,8 @@ enum SupplyChainStageName {
   PROCESSING // Chế biến
   PACKAGING // Đóng gói
   WAREHOUSE // Nhập kho
-  SHIPPING // Xuất kho / Vận chuyển
+  HANDOVER_TO_CARRIER // Bàn giao cho đơn vị vận chuyển
+  SHIPPING // Đang vận chuyển
   DISTRIBUTOR // Đại lý / Nhà phân phối
   RETAIL // Bán lẻ
   CUSTOMER // Khách hàng
@@ -767,6 +1176,12 @@ model BatchJourney {
   imageUrls      String[] @map("image_urls")
   attachmentUrls String[] @map("attachment_urls")
 
+  // Thời điểm nghiệp vụ và thông tin vận chuyển/giao nhận
+  eventTime     DateTime @default(now()) @map("event_time")
+  referenceCode String?  @map("reference_code")
+  carrierName   String?  @map("carrier_name")
+  recipientName String?  @map("recipient_name")
+
   // Audit
   ipAddress String? @map("ip_address") // IP của người tạo
 
@@ -779,8 +1194,302 @@ model BatchJourney {
 
   @@index([batchId])
   @@index([stageId])
+  @@index([batchId, eventTime])
   @@index([createdAt])
   @@map("batch_journeys")
+}
+
+model BatchLogisticsAssignment {
+  id              String                    @id @default(uuid()) @db.Uuid
+  batchId         String                    @map("batch_id") @db.Uuid
+  batch           InventoryBatch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  logisticsUserId String                    @map("logistics_user_id") @db.Uuid
+  logisticsUser   User                      @relation("LogisticsAssignee", fields: [logisticsUserId], references: [id], onDelete: Restrict)
+  assignedById    String                    @map("assigned_by_id") @db.Uuid
+  assignedBy      User                      @relation("LogisticsAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  carrierName     String                    @map("carrier_name") @db.VarChar(200)
+  trackingCode    String                    @map("tracking_code") @db.VarChar(200)
+  status          LogisticsAssignmentStatus @default(ASSIGNED)
+  assignedAt      DateTime                  @default(now()) @map("assigned_at")
+  startedAt       DateTime?                 @map("started_at")
+  deliveredAt     DateTime?                 @map("delivered_at")
+  cancelledAt     DateTime?                 @map("cancelled_at")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+
+  @@index([batchId])
+  @@index([logisticsUserId, status])
+  @@index([trackingCode])
+  @@map("batch_logistics_assignments")
+}
+
+// Legacy BatchLogisticsAssignment is intentionally retained for existing
+// traceability records. New transport operations must use Shipment models.
+model LogisticsOrganization {
+  id            String                        @id @default(uuid()) @db.Uuid
+  code          String                        @unique @db.VarChar(50)
+  name          String                        @db.VarChar(200)
+  type          LogisticsOrganizationType     @default(THIRD_PARTY)
+  providerCode  String?                       @map("provider_code") @db.VarChar(50)
+  trackingUrlTemplate String?                 @map("tracking_url_template") @db.VarChar(500)
+  isActive      Boolean                       @default(true) @map("is_active")
+  memberships   LogisticsOrganizationMember[]
+  shipments     Shipment[]
+  webhookEvents CarrierWebhookEvent[]
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  updatedAt     DateTime                      @updatedAt @map("updated_at")
+
+  @@unique([providerCode])
+  @@map("logistics_organizations")
+}
+
+model LogisticsOrganizationMember {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  organization   LogisticsOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  userId         String                @map("user_id") @db.Uuid
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  @@unique([organizationId, userId])
+  @@index([userId, isActive])
+  @@map("logistics_organization_members")
+}
+
+model Shipment {
+  id                     String                @id @default(uuid()) @db.Uuid
+  shipmentNumber         String                @unique @map("shipment_number") @db.VarChar(50)
+  idempotencyKey         String                @map("idempotency_key") @db.VarChar(100)
+  orderId                String?               @map("order_id") @db.Uuid
+  order                  Order?                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  originWarehouseId      String                @map("origin_warehouse_id") @db.Uuid
+  originWarehouse        Warehouse             @relation("ShipmentOriginWarehouse", fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouseId String?               @map("destination_warehouse_id") @db.Uuid
+  destinationWarehouse   Warehouse?            @relation("ShipmentDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  carrierOrganizationId  String                @map("carrier_organization_id") @db.Uuid
+  carrierOrganization    LogisticsOrganization @relation(fields: [carrierOrganizationId], references: [id], onDelete: Restrict)
+  routeType              ShipmentRouteType     @map("route_type")
+  status                 ShipmentStatus        @default(DRAFT)
+  trackingCode           String?               @map("tracking_code") @db.VarChar(200)
+  destinationName        String                @map("destination_name") @db.VarChar(200)
+  destinationAddress     String                @map("destination_address") @db.Text
+  destinationPhone       String?               @map("destination_phone") @db.VarChar(30)
+  version                Int                   @default(0)
+  createdById            String                @map("created_by_id") @db.Uuid
+  createdBy              User                  @relation("ShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledAt            DateTime?             @map("cancelled_at")
+  cancellationReason     String?               @map("cancellation_reason") @db.Text
+  handedOverAt           DateTime?             @map("handed_over_at")
+  deliveredAt            DateTime?             @map("delivered_at")
+  items                  ShipmentItem[]
+  assignments            ShipmentAssignment[]
+  events                 ShipmentEvent[]
+  webhookEvents          CarrierWebhookEvent[]
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+
+  @@unique([createdById, idempotencyKey])
+  @@unique([carrierOrganizationId, trackingCode])
+  @@index([originWarehouseId, status])
+  @@index([destinationWarehouseId, status])
+  @@index([orderId])
+  @@index([status, updatedAt])
+  @@map("shipments")
+}
+
+model ShipmentItem {
+  id          String         @id @default(uuid()) @db.Uuid
+  shipmentId  String         @map("shipment_id") @db.Uuid
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  batchId     String         @map("batch_id") @db.Uuid
+  batch       InventoryBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  orderItemId String?        @map("order_item_id") @db.Uuid
+  orderItem   OrderItem?     @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  quantity    Int
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@index([shipmentId])
+  @@index([batchId])
+  @@index([orderItemId])
+  @@map("shipment_items")
+}
+
+model ShipmentAssignment {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  shipmentId         String                   @map("shipment_id") @db.Uuid
+  shipment           Shipment                 @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  logisticsUserId    String                   @map("logistics_user_id") @db.Uuid
+  logisticsUser      User                     @relation("ShipmentAssignee", fields: [logisticsUserId], references: [id], onDelete: Restrict)
+  assignedById       String                   @map("assigned_by_id") @db.Uuid
+  assignedBy         User                     @relation("ShipmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  status             ShipmentAssignmentStatus @default(ASSIGNED)
+  assignmentReason   String?                  @map("assignment_reason") @db.Text
+  cancellationReason String?                  @map("cancellation_reason") @db.Text
+  assignedAt         DateTime                 @default(now()) @map("assigned_at")
+  startedAt          DateTime?                @map("started_at")
+  completedAt        DateTime?                @map("completed_at")
+  cancelledAt        DateTime?                @map("cancelled_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([shipmentId, status])
+  @@index([logisticsUserId, status])
+  @@map("shipment_assignments")
+}
+
+model ShipmentEvent {
+  id             String              @id @default(uuid()) @db.Uuid
+  shipmentId     String              @map("shipment_id") @db.Uuid
+  shipment       Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  idempotencyKey String              @map("idempotency_key") @db.VarChar(100)
+  eventType      ShipmentEventType   @map("event_type")
+  source         ShipmentEventSource @default(INTERNAL)
+  fromStatus     ShipmentStatus?     @map("from_status")
+  toStatus       ShipmentStatus      @map("to_status")
+  actorId        String?             @map("actor_id") @db.Uuid
+  actor          User?               @relation("ShipmentEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+  eventTime      DateTime            @map("event_time")
+  location       String?             @db.Text
+  latitude       Float?
+  longitude      Float?
+  recipientName  String?             @map("recipient_name") @db.VarChar(200)
+  failureReason  String?             @map("failure_reason") @db.Text
+  note           String?             @db.Text
+  imageUrls      String[]            @map("image_urls")
+  attachmentUrls String[]            @map("attachment_urls")
+  metadata       Json?
+  ipAddress      String?             @map("ip_address") @db.VarChar(100)
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@unique([shipmentId, idempotencyKey])
+  @@index([shipmentId, eventTime])
+  @@index([eventType, createdAt])
+  @@map("shipment_events")
+}
+
+model CarrierWebhookEvent {
+  id              String                         @id @default(uuid()) @db.Uuid
+  organizationId  String                         @map("organization_id") @db.Uuid
+  organization    LogisticsOrganization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  shipmentId      String                         @map("shipment_id") @db.Uuid
+  shipment        Shipment                       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  externalEventId String                         @map("external_event_id") @db.VarChar(100)
+  trackingCode    String                         @map("tracking_code") @db.VarChar(200)
+  payloadHash     String                         @map("payload_hash") @db.VarChar(64)
+  payload         Json
+  signatureValid  Boolean                        @map("signature_valid")
+  status          CarrierWebhookProcessingStatus
+  errorMessage    String?                        @map("error_message") @db.Text
+  receivedAt      DateTime                       @default(now()) @map("received_at")
+  processedAt     DateTime?                      @map("processed_at")
+
+  @@unique([organizationId, externalEventId])
+  @@index([trackingCode, receivedAt])
+  @@index([shipmentId, receivedAt])
+  @@map("carrier_webhook_events")
+}
+
+model TraceabilityParty {
+  id           String                   @id @default(uuid()) @db.Uuid
+  code         String                   @unique @db.VarChar(100)
+  name         String                   @db.VarChar(250)
+  type         TraceabilityPartyType
+  gln          String?                  @unique @db.VarChar(13)
+  taxCode      String?                  @map("tax_code") @db.VarChar(50)
+  phone        String?                  @db.VarChar(30)
+  email        String?                  @db.VarChar(254)
+  isVerified   Boolean                  @default(false) @map("is_verified")
+  verifiedAt   DateTime?                @map("verified_at")
+  createdById  String                   @map("created_by_id") @db.Uuid
+  createdBy    User                     @relation("TraceabilityPartyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedById String?                  @map("verified_by_id") @db.Uuid
+  verifiedBy   User?                    @relation("TraceabilityPartyVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  locations    TraceabilityLocation[]
+  origins      BatchOriginDeclaration[]
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+
+  @@index([type, isVerified])
+  @@index([createdById])
+  @@map("traceability_parties")
+}
+
+model TraceabilityLocation {
+  id          String                   @id @default(uuid()) @db.Uuid
+  partyId     String                   @map("party_id") @db.Uuid
+  party       TraceabilityParty        @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  code        String                   @db.VarChar(100)
+  name        String                   @db.VarChar(250)
+  type        TraceabilityLocationType
+  gln         String?                  @unique @db.VarChar(13)
+  address     String                   @db.Text
+  ward        String?                  @db.VarChar(150)
+  province    String?                  @db.VarChar(150)
+  countryCode String                   @default("VN") @map("country_code") @db.Char(2)
+  latitude    Decimal?                 @db.Decimal(10, 7)
+  longitude   Decimal?                 @db.Decimal(10, 7)
+  isVerified  Boolean                  @default(false) @map("is_verified")
+  createdById String                   @map("created_by_id") @db.Uuid
+  createdBy   User                     @relation("TraceabilityLocationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  origins     BatchOriginDeclaration[]
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([partyId, code])
+  @@index([partyId, type])
+  @@map("traceability_locations")
+}
+
+model BatchOriginDeclaration {
+  id               String               @id @default(uuid()) @db.Uuid
+  batchId          String               @map("batch_id") @db.Uuid
+  batch            InventoryBatch       @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  revision         Int
+  partyId          String               @map("party_id") @db.Uuid
+  party            TraceabilityParty    @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  partySnapshot    Json                 @map("party_snapshot")
+  locationId       String               @map("location_id") @db.Uuid
+  location         TraceabilityLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  locationSnapshot Json                 @map("location_snapshot")
+  sourceLotCode    String               @map("source_lot_code") @db.VarChar(150)
+  countryCode      String               @default("VN") @map("country_code") @db.Char(2)
+  harvestDate      DateTime?            @map("harvest_date")
+  manufactureDate  DateTime?            @map("manufacture_date")
+  productionMethod String?              @map("production_method") @db.Text
+  evidenceUrls     String[]             @map("evidence_urls")
+  declarationHash  String               @map("declaration_hash") @db.VarChar(64)
+  changeReason     String?              @map("change_reason") @db.Text
+  declaredById     String               @map("declared_by_id") @db.Uuid
+  declaredBy       User                 @relation("BatchOriginDeclaredBy", fields: [declaredById], references: [id], onDelete: Restrict)
+  declaredAt       DateTime             @default(now()) @map("declared_at")
+
+  @@unique([batchId, revision])
+  @@index([partyId, sourceLotCode])
+  @@index([locationId])
+  @@index([declaredAt])
+  @@map("batch_origin_declarations")
+}
+
+model BatchMaterialLink {
+  id               String         @id @default(uuid()) @db.Uuid
+  inputBatchId     String         @map("input_batch_id") @db.Uuid
+  inputBatch       InventoryBatch @relation("BatchMaterialInput", fields: [inputBatchId], references: [id], onDelete: Restrict)
+  outputBatchId    String         @map("output_batch_id") @db.Uuid
+  outputBatch      InventoryBatch @relation("BatchMaterialOutput", fields: [outputBatchId], references: [id], onDelete: Restrict)
+  quantity         Decimal        @db.Decimal(14, 3)
+  unit             String         @db.VarChar(30)
+  processReference String         @map("process_reference") @db.VarChar(150)
+  evidenceUrls     String[]       @map("evidence_urls")
+  createdById      String         @map("created_by_id") @db.Uuid
+  createdBy        User           @relation("BatchMaterialLinkCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@unique([inputBatchId, outputBatchId, processReference])
+  @@index([outputBatchId])
+  @@index([createdAt])
+  @@map("batch_material_links")
 }
 
 // ==========================================
@@ -874,12 +1583,15 @@ model Supplier {
   isActive      Boolean         @default(true) @map("is_active")
   rating        Float?
   contactPerson String?         @map("contact_person")
-  businessId    String          @map("business_id") @db.Uuid
-  business      Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sellerId      String          @map("seller_id") @db.Uuid
+  seller        User            @relation("SellerSuppliers", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId    String?         @map("business_id") @db.Uuid
+  business      Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
   orders        PurchaseOrder[]
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  @@index([sellerId])
   @@map("suppliers")
 }
 
@@ -902,8 +1614,10 @@ model PurchaseOrder {
   supplier    Supplier  @relation(fields: [supplierId], references: [id])
   warehouseId String    @map("warehouse_id") @db.Uuid
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  businessId  String    @map("business_id") @db.Uuid
-  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sellerId    String    @map("seller_id") @db.Uuid
+  seller      User      @relation("SellerPurchaseOrders", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId  String?   @map("business_id") @db.Uuid
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
   orderDate            DateTime  @default(now()) @map("order_date")
   expectedDeliveryDate DateTime? @map("expected_delivery_date")
@@ -924,6 +1638,7 @@ model PurchaseOrder {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([sellerId])
   @@map("purchase_orders")
 }
 
@@ -947,8 +1662,10 @@ model GoodsReceipt {
   purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
   warehouseId     String             @map("warehouse_id") @db.Uuid
   warehouse       Warehouse          @relation(fields: [warehouseId], references: [id])
-  businessId      String             @map("business_id") @db.Uuid
-  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sellerId        String             @map("seller_id") @db.Uuid
+  seller          User               @relation("SellerGoodsReceipts", fields: [sellerId], references: [id], onDelete: Restrict)
+  businessId      String?            @map("business_id") @db.Uuid
+  business        Business?          @relation(fields: [businessId], references: [id], onDelete: SetNull)
   receivedById    String             @map("received_by_id") @db.Uuid
   receivedBy      User               @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
   receivedDate    DateTime           @default(now()) @map("received_date")
@@ -956,6 +1673,7 @@ model GoodsReceipt {
   items           GoodsReceiptItem[]
   createdAt       DateTime           @default(now()) @map("created_at")
 
+  @@index([sellerId])
   @@map("goods_receipts")
 }
 
@@ -990,53 +1708,53 @@ model GoodsReceiptItem {
 // ==========================================
 
 model Event {
-  id                   String      @id @default(uuid()) @db.Uuid
-  title                String
-  slug                 String      @unique
-  description          String      @db.Text
-  summary              String?     @db.Text
-  banner               String?
-  coverImage           String?     @map("cover_image")
-  
+  id          String  @id @default(uuid()) @db.Uuid
+  title       String
+  slug        String  @unique
+  description String  @db.Text
+  summary     String? @db.Text
+  banner      String?
+  coverImage  String? @map("cover_image")
+
   // Location
-  location             String?     @db.Text
-  latitude             Float?
-  longitude            Float?
-  
+  location  String? @db.Text
+  latitude  Float?
+  longitude Float?
+
   // Schedule
-  startDate            DateTime    @map("start_date")
-  endDate              DateTime    @map("end_date")
-  registrationDeadline DateTime?   @map("registration_deadline")
-  
+  startDate            DateTime  @map("start_date")
+  endDate              DateTime  @map("end_date")
+  registrationDeadline DateTime? @map("registration_deadline")
+
   // Details
-  organizer            String?
-  eventType            String?     @map("event_type")
-  isFeatured           Boolean     @default(false) @map("is_featured")
-  isPublic             Boolean     @default(true) @map("is_public")
-  
+  organizer  String?
+  eventType  String? @map("event_type")
+  isFeatured Boolean @default(false) @map("is_featured")
+  isPublic   Boolean @default(true) @map("is_public")
+
   // Participants
-  registrationRequired Boolean     @default(false) @map("registration_required")
-  maxParticipants      Int?        @map("max_participants")
-  currentParticipants  Int         @default(0) @map("current_participants")
-  
+  registrationRequired Boolean @default(false) @map("registration_required")
+  maxParticipants      Int?    @map("max_participants")
+  currentParticipants  Int     @default(0) @map("current_participants")
+
   // Contact
-  contactEmail         String?     @map("contact_email")
-  contactPhone         String?     @map("contact_phone")
-  
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
   // State
-  status               EventStatus @default(DRAFT)
-  
+  status EventStatus @default(DRAFT)
+
   // Audit
-  createdById          String      @map("created_by_id") @db.Uuid
-  createdBy            User        @relation("EventCreatedBy", fields: [createdById], references: [id])
-  updatedById          String?     @map("updated_by_id") @db.Uuid
-  updatedBy            User?       @relation("EventUpdatedBy", fields: [updatedById], references: [id])
-  
-  createdAt            DateTime    @default(now()) @map("created_at")
-  updatedAt            DateTime    @updatedAt @map("updated_at")
-  deletedAt            DateTime?   @map("deleted_at")
-  
-  campaigns            NotificationCampaign[]
+  createdById String  @map("created_by_id") @db.Uuid
+  createdBy   User    @relation("EventCreatedBy", fields: [createdById], references: [id])
+  updatedById String? @map("updated_by_id") @db.Uuid
+  updatedBy   User?   @relation("EventUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  campaigns NotificationCampaign[]
 
   @@index([status])
   @@index([startDate])
@@ -1045,52 +1763,52 @@ model Event {
 }
 
 model NotificationCampaign {
-  id               String                     @id @default(uuid()) @db.Uuid
-  eventId          String?                    @map("event_id") @db.Uuid
-  event            Event?                     @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  
-  targetAudience   NotificationTarget         @map("target_audience")
-  targetDetails    Json?                      @map("target_details") // For specific Businesses/Provinces/Wards
-  
-  title            String
-  message          String                     @db.Text
-  
-  scheduledAt      DateTime?                  @map("scheduled_at")
-  sentAt           DateTime?                  @map("sent_at")
-  status           NotificationCampaignStatus @default(DRAFT)
-  
+  id      String  @id @default(uuid()) @db.Uuid
+  eventId String? @map("event_id") @db.Uuid
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  targetAudience NotificationTarget @map("target_audience")
+  targetDetails  Json?              @map("target_details") // For specific Businesses/Provinces/Wards
+
+  title   String
+  message String @db.Text
+
+  scheduledAt DateTime?                  @map("scheduled_at")
+  sentAt      DateTime?                  @map("sent_at")
+  status      NotificationCampaignStatus @default(DRAFT)
+
   // Stats
-  totalRecipients  Int                        @default(0) @map("total_recipients")
-  sentCount        Int                        @default(0) @map("sent_count")
-  failedCount      Int                        @default(0) @map("failed_count")
-  readCount        Int                        @default(0) @map("read_count")
+  totalRecipients Int @default(0) @map("total_recipients")
+  sentCount       Int @default(0) @map("sent_count")
+  failedCount     Int @default(0) @map("failed_count")
+  readCount       Int @default(0) @map("read_count")
 
   // Audit
-  createdById      String                     @map("created_by_id") @db.Uuid
-  createdBy        User                       @relation("CampaignCreatedBy", fields: [createdById], references: [id])
-  
-  recipients       NotificationRecipient[]
-  
-  createdAt        DateTime                   @default(now()) @map("created_at")
-  updatedAt        DateTime                   @updatedAt @map("updated_at")
-  
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("CampaignCreatedBy", fields: [createdById], references: [id])
+
+  recipients NotificationRecipient[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@index([status])
   @@index([scheduledAt])
   @@map("notification_campaigns")
 }
 
 model NotificationRecipient {
-  id               String               @id @default(uuid()) @db.Uuid
-  campaignId       String               @map("campaign_id") @db.Uuid
-  campaign         NotificationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  userId           String               @map("user_id") @db.Uuid
-  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  deliveryStatus   DeliveryStatus       @default(PENDING) @map("delivery_status")
-  readAt           DateTime?            @map("read_at")
-  
-  createdAt        DateTime             @default(now()) @map("created_at")
-  
+  id         String               @id @default(uuid()) @db.Uuid
+  campaignId String               @map("campaign_id") @db.Uuid
+  campaign   NotificationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId     String               @map("user_id") @db.Uuid
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deliveryStatus DeliveryStatus @default(PENDING) @map("delivery_status")
+  readAt         DateTime?      @map("read_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
   @@unique([campaignId, userId])
   @@index([userId])
   @@index([deliveryStatus])

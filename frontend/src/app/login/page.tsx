@@ -1,5 +1,7 @@
 'use client';
 
+import { getErrorMessage } from '@/utils/api-error';
+
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -12,7 +14,9 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { api } from '../../services/api';
 import { toast } from 'sonner';
-import { Leaf, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { GoogleLoginButton } from '../../components/auth/GoogleLoginButton';
+import { OcopLogo } from '../../components/ui/ocop-logo';
 
 // ─── Schema giữ nguyên 100% ─────────────────────────────────────────────────
 const loginSchema = z.object({
@@ -43,9 +47,9 @@ export default function LoginPage() {
       const { user, accessToken, refreshToken } = response.data.data;
       loginStore(user, accessToken, refreshToken);
       toast.success('Đăng nhập hệ thống thành công');
-      router.push('/dashboard');
-    } catch (err: any) {
-      const errMsg = err.response?.data?.message || 'Đăng nhập không thành công, vui lòng thử lại';
+      router.push(user.mustChangePassword ? '/dashboard/profile' : '/dashboard');
+    } catch (err: unknown) {
+      const errMsg = getErrorMessage(err, 'Đăng nhập không thành công, vui lòng thử lại');
       toast.error(errMsg);
     } finally {
       setIsLoading(false);
@@ -68,14 +72,8 @@ export default function LoginPage() {
         <div aria-hidden className="absolute -top-12 -right-12 w-64 h-64 rounded-full bg-white/5" />
 
         {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white">
-            <Leaf className="h-5 w-5 fill-white text-white" />
-          </div>
-          <div>
-            <div className="text-white font-bold text-lg leading-none">OCOP Việt Nam</div>
-            <div className="text-emerald-200 text-xs">Bản đồ số nông sản</div>
-          </div>
+        <div className="flex items-center gap-3">
+          <OcopLogo size="lg" variant="badge" />
         </div>
 
         {/* Headline */}
@@ -90,9 +88,9 @@ export default function LoginPage() {
           <div className="mt-8 grid grid-cols-2 gap-4">
             {[
               { label: 'Sản phẩm OCOP', value: '5,000+' },
-              { label: 'Tỉnh thành', value: '63' },
+              { label: 'Tỉnh thành', value: '34' },
+              { label: 'Xã phường', value: '3,000+' },
               { label: 'Chủ thể HTX', value: '1,200+' },
-              { label: 'Ngành hàng', value: '20+' },
             ].map((s) => (
               <div key={s.label} className="bg-white/10 rounded-xl p-3">
                 <div className="text-white font-black text-xl">{s.value}</div>
@@ -116,11 +114,8 @@ export default function LoginPage() {
       >
         <div className="w-full max-w-md">
           {/* Mobile logo */}
-          <div className="flex lg:hidden items-center gap-2 mb-8">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#16A34A] text-white">
-              <Leaf className="h-4 w-4 fill-white text-white" />
-            </div>
-            <span className="font-bold text-slate-900 dark:text-white">OCOP Việt Nam</span>
+          <div className="flex lg:hidden items-center mb-8">
+            <OcopLogo size="md" />
           </div>
 
           <div className="mb-8">
@@ -166,6 +161,19 @@ export default function LoginPage() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-slate-50 dark:bg-slate-950 px-3 text-slate-400 dark:text-slate-500 font-medium">
+                Hoặc tiếp tục với
+              </span>
+            </div>
+          </div>
+
+          <GoogleLoginButton text="Đăng nhập bằng Google" />
 
           <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-6">
             Chưa có tài khoản?{' '}

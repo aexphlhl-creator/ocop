@@ -4,8 +4,16 @@ import { cn } from '../../utils/cn';
 
 interface Tracking {
   id: string;
-  status: 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
-  description?: string;
+  status:
+    | 'PENDING'
+    | 'CONFIRMED'
+    | 'PACKING'
+    | 'PROCESSING'
+    | 'SHIPPED'
+    | 'DELIVERED'
+    | 'CANCELLED'
+    | 'RETURNED';
+  description?: string | null;
   createdAt: string;
 }
 
@@ -22,12 +30,18 @@ export function OrderTimeline({ trackingHistory }: OrderTimelineProps) {
         return <FileText className="h-5 w-5 text-amber-500" />;
       case 'PROCESSING':
         return <Package className="h-5 w-5 text-blue-500" />;
+      case 'CONFIRMED':
+        return <CheckCircle2 className="h-5 w-5 text-blue-500" />;
+      case 'PACKING':
+        return <Package className="h-5 w-5 text-indigo-500" />;
       case 'SHIPPED':
         return <Truck className="h-5 w-5 text-indigo-500" />;
       case 'DELIVERED':
         return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
       case 'CANCELLED':
         return <XCircle className="h-5 w-5 text-red-500" />;
+      case 'RETURNED':
+        return <XCircle className="h-5 w-5 text-orange-500" />;
       default:
         return <Clock className="h-5 w-5 text-slate-400" />;
     }
@@ -36,10 +50,13 @@ export function OrderTimeline({ trackingHistory }: OrderTimelineProps) {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'PENDING': return 'Chờ xác nhận';
+      case 'CONFIRMED': return 'Đã xác nhận';
+      case 'PACKING': return 'Đang đóng gói';
       case 'PROCESSING': return 'Đang xử lý / Chuẩn bị hàng';
       case 'SHIPPED': return 'Đang giao hàng';
       case 'DELIVERED': return 'Giao hàng thành công';
       case 'CANCELLED': return 'Đã hủy';
+      case 'RETURNED': return 'Đã hoàn/đổi trả';
       default: return status;
     }
   };

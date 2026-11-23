@@ -34,7 +34,9 @@ export class NotificationsService {
 
   async sendEmail(to: string, subject: string, html: string) {
     if (this.configService.get<boolean>('DEMO_MODE', false)) {
-      this.logger.log(`DEMO_MODE Email Suppressed: to=${to} subject=${subject}`);
+      this.logger.log(
+        `DEMO_MODE Email Suppressed: to=${to} subject=${subject}`,
+      );
       return;
     }
 
@@ -46,19 +48,26 @@ export class NotificationsService {
       });
       this.logger.log(`Email sent to ${to}`);
     } catch (error) {
-      this.logger.error(`Failed to send email to ${to}`, error.stack);
+      this.logger.error(
+        `Failed to send email to ${to}`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 
-  async notifyAdminsNewProduct(productName: string, businessName: string, productId: string) {
+  async notifyAdminsNewProduct(
+    productName: string,
+    sellerName: string,
+    productId: string,
+  ) {
     // 1. Lấy danh sách tất cả Admin
     const admins = await this.prisma.user.findMany({
       where: { role: { name: RoleName.ADMIN } },
     });
 
     const title = 'Sản phẩm mới chờ duyệt';
-    const message = `Chủ thể "${businessName}" vừa thêm sản phẩm mới "${productName}". Vui lòng kiểm tra và phê duyệt.`;
-    const link = `/dashboard/products`; // Có thể link tới chi tiết sản phẩm nếu có view dashboard cho admin
+    const message = `Người bán "${sellerName}" vừa thêm sản phẩm mới "${productName}". Vui lòng kiểm tra và phê duyệt.`;
+    const link = `/dashboard/products?productId=${encodeURIComponent(productId)}`;
 
     for (const admin of admins) {
       // Gửi in-app notification
@@ -70,11 +79,15 @@ export class NotificationsService {
         <p>Một sản phẩm mới vừa được tạo trên hệ thống và đang chờ bạn phê duyệt.</p>
         <ul>
           <li><strong>Tên sản phẩm:</strong> ${productName}</li>
-          <li><strong>Chủ thể sản xuất:</strong> ${businessName}</li>
+          <li><strong>Người bán:</strong> ${sellerName}</li>
         </ul>
         <p>Vui lòng đăng nhập vào trang quản trị để xem xét.</p>
       `;
-      await this.sendEmail(admin.email, '[OCOP] Sản phẩm mới chờ phê duyệt', html);
+      await this.sendEmail(
+        admin.email,
+        '[OCOP] Sản phẩm mới chờ phê duyệt',
+        html,
+      );
     }
   }
 
@@ -90,12 +103,18 @@ export class NotificationsService {
     const statusText = isApproved ? 'đã được PHÊ DUYỆT' : 'bị TỪ CHỐI';
     const type: NotificationType = isApproved ? 'SUCCESS' : 'ERROR';
     const title = `Sản phẩm ${statusText}`;
-    const message = isApproved 
+    const message = isApproved
       ? `Sản phẩm "${productName}" của bạn đã được Admin phê duyệt và hiển thị trên Cổng thông tin.`
       : `Sản phẩm "${productName}" của bạn đã bị từ chối.${reason ? ' Lý do: ' + reason : ''}`;
-    
+
     // Gửi in-app notification
-    await this.createNotification(user.id, title, message, type, '/dashboard/products');
+    await this.createNotification(
+      user.id,
+      title,
+      message,
+      type,
+      '/dashboard/products',
+    );
 
     // Gửi email
     const html = `
@@ -104,7 +123,11 @@ export class NotificationsService {
       ${!isApproved && reason ? `<p><strong>Lý do từ chối:</strong> ${reason}</p>` : ''}
       <p>Trân trọng,<br/>Ban quản trị OCOP</p>
     `;
-    await this.sendEmail(user.email, `[OCOP] Thông báo trạng thái sản phẩm ${productName}`, html);
+    await this.sendEmail(
+      user.email,
+      `[OCOP] Thông báo trạng thái sản phẩm ${productName}`,
+      html,
+    );
   }
 
   async getMyNotifications(userId: string) {
@@ -122,7 +145,9 @@ export class NotificationsService {
   }
 
   async markAsRead(notificationId: string, userId: string) {
-    const notif = await this.prisma.notification.findUnique({ where: { id: notificationId } });
+    const notif = await this.prisma.notification.findUnique({
+      where: { id: notificationId },
+    });
     if (!notif || notif.userId !== userId) {
       throw new Error('Not found or unauthorized');
     }

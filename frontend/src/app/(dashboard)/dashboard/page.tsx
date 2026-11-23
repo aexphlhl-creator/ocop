@@ -1,6 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { AssetImage } from '@/components/ui/asset-image';
+
+import React, { useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { useCurrentUser } from '../../../hooks/use-auth';
@@ -17,17 +20,23 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../../../components/ui/table';
 import { Badge } from '../../../components/ui/badge';
 import { LoadingSpinner } from '../../../components/ui/loading-spinner';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../../services/api';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import {
   ShoppingBag, Store, Newspaper, Users,
-  BarChart3, CheckCircle, XCircle, HelpCircle, ListOrdered, TrendingUp, Map, Eye, QrCode, Download, X, ShieldCheck
+  BarChart3, CheckCircle, XCircle, HelpCircle, ListOrdered, TrendingUp, Map, Eye, EyeOff, QrCode, Download, X, ShieldCheck, Warehouse,
+  ArrowRight, Calendar
 } from 'lucide-react';
 import { AnalyticsCharts } from '../../../components/dashboard/analytics-charts';
+import { EventsWidget } from '../../../components/dashboard/events-widget';
 import { QRCodeSVG } from 'qrcode.react';
 
+import type { Product, NewsArticle } from '@/types/catalog';
+const subscribeClient = () => () => {};
 const COLORS = ['#16A34A', '#F59E0B', '#3B82F6', '#8B5CF6', '#EC4899'];
 
 
@@ -42,15 +51,26 @@ const stagger: Variants = { hidden: {}, show: { transition: { staggerChildren: 0
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
-  const [isClient, setIsClient] = useState(false);
-  const [selectedQrProduct, setSelectedQrProduct] = useState<any>(null);
+  const isClient = useSyncExternalStore(subscribeClient, () => true, () => false);
+  const [selectedQrProduct, setSelectedQrProduct] = useState<Product | null>(null);
   
-  useEffect(() => { setIsClient(true); }, []);
 
   const isAdmin = user?.role === 'ADMIN';
   const isSeller = user?.role === 'SELLER';
+  const isWarehouseManager = user?.role === 'WAREHOUSE_MANAGER';
 
   const { data: adminCounts, isLoading: isCountsLoading } = useAdminDashboard(isAdmin);
+  const { data: recentNews = [], isLoading: isNewsLoading } = useQuery({
+    queryKey: ['dashboardRecentNews'],
+    queryFn: async () => {
+      const res = await api.get('/api/v1/news', { params: { page: 1, limit: 4 } });
+      const raw = res.data;
+      const rawData = raw?.data;
+      return Array.isArray(rawData) ? rawData : (rawData?.items || raw?.items || []);
+    },
+    enabled: isAdmin,
+    staleTime: 3 * 60 * 1000,
+  });
   const { data: monthlyData, isLoading: isMonthlyLoading } = useMonthlyProducts(isAdmin);
   const { data: myProductsData, isLoading: isMyProductsLoading } = useMyProducts(isSeller);
   const { data: sellerViews, isLoading: isSellerViewsLoading } = useSellerViews(isSeller);
@@ -99,21 +119,29 @@ export default function DashboardPage() {
   };
 
   // ─── ADMIN VIEW ───────────────────────────────────────────────────────────
+  if (user.role === 'QUALITY_ASSURANCE') {
+    return <section className="rounded-2xl border bg-white p-8 dark:bg-slate-900">
+      <h1 className="text-2xl font-bold">Kiểm định & phát hành lô</h1>
+      <p className="my-4">Kiểm tra chứng từ nguồn gốc, ghi kết quả kiểm định độc lập và phát hành lô sau khi kho xác nhận vị trí lưu trữ.</p>
+      <Link href="/dashboard/supply-chain" className="font-semibold text-emerald-600 underline">Mở danh sách lô chờ QA</Link>
+    </section>;
+  }
   if (isAdmin) {
+    const newsCount = (adminCounts?.news !== undefined && adminCounts?.news !== null) ? adminCounts.news : recentNews.length;
     const statsCards = [
       { title: 'Tổng sản phẩm', value: adminCounts?.products ?? 0, icon: ShoppingBag, colorClass: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', detail: `Duyệt: ${adminCounts?.approvedProducts ?? 0} | Chờ: ${adminCounts?.pendingProducts ?? 0}` },
-      { title: 'Chủ thể kinh tế', value: adminCounts?.businesses ?? 0, icon: Store, colorClass: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30', detail: 'Hợp tác xã & Doanh nghiệp' },
-      { title: 'Tin tức đã đăng', value: adminCounts?.news ?? 0, icon: Newspaper, colorClass: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', detail: 'Thông tin chính sách OCOP' },
+      { title: 'Người bán', value: adminCounts?.sellers ?? 0, icon: Store, colorClass: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30', detail: 'Tài khoản Seller đang quản lý' },
+      { title: 'Tin tức đã đăng', value: newsCount, icon: Newspaper, colorClass: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', detail: 'Thông tin chính sách OCOP' },
       { title: 'Người dùng', value: adminCounts?.users ?? 0, icon: Users, colorClass: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30', detail: 'Thành viên hệ thống' },
     ];
 
-    const pieData = ocopLevelData?.map((item: any) => ({
+    const pieData = ocopLevelData?.map((item: { level: number; count: number }) => ({
       name: `${item.level} Sao`,
       value: item.count,
     })) || [];
 
-    const topProvincesData = provinceData
-      ?.sort((a: any, b: any) => b.count - a.count)
+    const topProvincesData = (provinceData ? [...provinceData] : [])
+      .sort((a: { count: number }, b: { count: number }) => b.count - a.count)
       .slice(0, 5) || [];
 
     const tooltipStyle = {
@@ -140,6 +168,17 @@ export default function DashboardPage() {
             <p className="text-sm md:text-base font-medium text-slate-500 dark:text-slate-400 mt-2">
               Giám sát toàn diện hệ sinh thái sản phẩm OCOP quốc gia.
             </p>
+          </div>
+
+          <div className="relative z-10 flex items-center gap-3">
+            <a
+              href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/v1/statistics/export/excel`}
+              download="Bao_cao_so_hoa_OCOP_Bo_NNPTNT.xlsx"
+              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all active:scale-95"
+            >
+              <Download className="w-4 h-4" />
+              <span>Xuất Báo Cáo Excel (Bộ NN&PTNT)</span>
+            </a>
           </div>
         </div>
 
@@ -214,7 +253,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={pieData} cx="50%" cy="45%" innerRadius={70} outerRadius={95} paddingAngle={6} dataKey="value" stroke="none">
-                        {pieData.map((_: any, index: number) => (
+                        {pieData.map((_: unknown, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -289,16 +328,107 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {/* Events & Fairs Widget */}
+        <motion.div variants={fadeUp} initial="hidden" animate="show">
+          <EventsWidget />
+        </motion.div>
+
+        {/* Recent News Widget */}
+        <motion.div variants={fadeUp} initial="hidden" animate="show">
+          <Card className="rounded-[2rem] border-white dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-none overflow-hidden">
+            <CardHeader className="p-6 md:p-8 flex flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-600">
+                  <Newspaper className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-800 dark:text-slate-100">
+                    Tin tức &amp; Bản tin OCOP mới nhất
+                  </CardTitle>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Đồng bộ trực tiếp giữa trang chủ công cộng và trung tâm điều hành
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard/news"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+              >
+                Quản lý tất cả tin tức <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardHeader>
+            <CardContent className="p-6 md:p-8">
+              {isNewsLoading ? (
+                <div className="py-12 flex justify-center"><LoadingSpinner size="md" /></div>
+              ) : recentNews.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {recentNews.map((article: NewsArticle) => (
+                    <div
+                      key={article.id}
+                      className="flex items-start gap-3.5 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-emerald-200 dark:hover:border-emerald-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all duration-200"
+                    >
+                      {article.thumbnail ? (
+                        <AssetImage
+                          src={article.thumbnail}
+                          alt=""
+                          className="h-16 w-24 rounded-xl object-cover shrink-0 bg-slate-100"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-24 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-300 shrink-0">
+                          <Newspaper className="h-6 w-6" />
+                        </div>
+                      )}
+                      <div className="flex flex-col flex-1 min-w-0 justify-between h-full">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            {article.status === 'PUBLISHED' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
+                                <Eye className="h-2.5 w-2.5" /> Đã đăng
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                <EyeOff className="h-2.5 w-2.5" /> Nháp
+                              </span>
+                            )}
+                            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(article.createdAt).toLocaleDateString('vi-VN')}
+                            </span>
+                          </div>
+                          <Link
+                            href={`/news/${article.slug}`}
+                            target="_blank"
+                            className="text-sm font-semibold text-slate-800 dark:text-slate-100 hover:text-emerald-600 dark:hover:text-emerald-400 line-clamp-2 leading-snug transition-colors"
+                          >
+                            {article.title}
+                          </Link>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Tác giả: <span className="font-medium text-slate-600 dark:text-slate-300">{article.author?.fullName || 'Quản trị viên'}</span>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-10 text-sm text-slate-400">
+                  Chưa có bài viết nào được đăng trên hệ thống.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     );
   }
 
   // ─── SELLER VIEW ─────────────────────────────────────────────────────────
   if (isSeller) {
-    const productsList = myProductsData?.items || [];
-    const approvedCount = productsList.filter((p: any) => p.status === 'APPROVED').length;
-    const pendingCount  = productsList.filter((p: any) => p.status === 'PENDING').length;
-    const rejectedCount = productsList.filter((p: any) => p.status === 'REJECTED').length;
+    const productsList = myProductsData || [];
+    const approvedCount = productsList.filter((p) => p.status === 'APPROVED').length;
+    const pendingCount  = productsList.filter((p) => p.status === 'PENDING').length;
+    const rejectedCount = productsList.filter((p) => p.status === 'REJECTED').length;
 
     const statsCards = [
       { title: 'Lượt xem tháng này', value: sellerViews ?? 0, icon: Eye, colorClass: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30', detail: 'Tổng lượt xem các sản phẩm' },
@@ -370,7 +500,7 @@ export default function DashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {productsList.map((product: any) => (
+                    {productsList.map((product) => (
                       <TableRow key={product.id} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-white/50 dark:hover:bg-slate-800/20 transition-colors">
                         <TableCell className="font-bold text-slate-900 dark:text-slate-100 py-4">{product.name}</TableCell>
                         <TableCell className="text-[#16A34A] dark:text-emerald-400 font-bold">
@@ -466,6 +596,42 @@ export default function DashboardPage() {
             </motion.div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (isWarehouseManager) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+            Không gian quản lý kho
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Theo dõi và vận hành các kho đã được phân công cho bạn.
+          </p>
+        </div>
+        <Card>
+          <CardContent className="py-16 text-center flex flex-col items-center gap-5">
+            <div className="p-5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 rounded-2xl">
+              <Warehouse className="h-10 w-10" />
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-800 dark:text-slate-200 text-base">
+                Kho hàng được phân công
+              </h2>
+              <p className="text-sm text-slate-400 dark:text-slate-500 max-w-md leading-relaxed mt-2">
+                Bạn chỉ có thể xem và thao tác trên các kho mà quản trị viên đã gán.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/inventory"
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700 transition-colors"
+            >
+              <Warehouse className="h-4 w-4" /> Đi tới quản lý kho
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     );
   }

@@ -7,7 +7,7 @@ import { seedRoles } from './seeds/roles.seed';
 import { seedUsers } from './seeds/users.seed';
 import { seedProvinces } from './seeds/provinces.seed';
 import { seedWards } from './seeds/wards.seed';
-import { seedBusinesses } from './seeds/businesses.seed';
+import { seedSellerProfiles } from './seeds/seller-profiles.seed';
 import { seedCategories } from './seeds/categories.seed';
 import { seedProducts } from './seeds/products.seed';
 import { seedNews } from './seeds/news.seed';
@@ -37,42 +37,61 @@ async function main() {
     const wards = await seedWards(prisma, provinces);
     console.log(`✓ Wards seeded (${Object.keys(wards).length})`);
 
-    // 3. Atomically seed Roles, Users, Businesses, Products inside a transaction
-    let userCount = 0;
-    let businessCount = 0;
-    let productCount = 0;
+    // 3. Seed Roles
+    const roles = await seedRoles(prisma);
+    console.log(`✓ Roles seeded (${Object.keys(roles).length})`);
 
-    await prisma.$transaction(async (tx) => {
-      const roles = await seedRoles(tx as any);
-      const users = await seedUsers(tx as any, roles);
-      userCount = Object.keys(users).length;
-
-      const businesses = await seedBusinesses(tx as any, users, provinces, wards);
-      businessCount = Object.keys(businesses).length;
-
-      productCount = await seedProducts(tx as any, categories, businesses, provinces, wards, ocopLevels);
-    });
-
-    console.log('✓ Roles seeded');
-    console.log(`✓ Users seeded (${userCount})`);
-    console.log(`✓ Businesses seeded (${businessCount})`);
-    console.log(`✓ Products seeded (${productCount})`);
-
-    // 4. Seed News
-    const adminUser = await prisma.user.findUniqueOrThrow({
-      where: { email: 'admin@ocop.gov.vn' },
-    });
-    const newsCount = await seedNews(prisma, {
-      'admin@ocop.gov.vn': adminUser,
-    });
-    console.log(`✓ News seeded (${newsCount})`);
-
-    // 5. Seed Supply Chain Stages (lookup data)
+    // 4. Seed Supply Chain Stages (lookup data)
     const stageCount = await seedSupplyChainStages(prisma);
     console.log(`✓ Supply Chain Stages seeded (${stageCount})`);
 
     const certificateTypeCount = await seedCertificateTypes(prisma);
     console.log(`✓ Certificate Types seeded (${certificateTypeCount})`);
+
+    const isDemoMode = process.env.DEMO_MODE === 'true' || process.env.SEED_DEMO_DATA === 'true';
+
+    if (!isDemoMode) {
+      console.log('\n[PRODUCTION MODE] Production baseline data (Roles, Categories, OCOP Levels, Provinces, Wards, Stages, Certificate Types) seeded successfully.');
+      console.log('Notice: Demo accounts and demo products are skipped. Use `npm run admin:create` to safely create the initial Admin.');
+      return;
+    }
+
+    console.log('\n[DEMO MODE DETECTED] Seeding demo users, sellers, products, and news...');
+
+    // 5. Atomically seed Demo Users, Seller Profiles and Products.
+    let userCount = 0;
+    let sellerProfileCount = 0;
+    let productCount = 0;
+
+    await prisma.$transaction(
+      async (tx) => {
+        const users = await seedUsers(tx as any, roles);
+        userCount = Object.keys(users).length;
+
+        const sellerProfiles = await seedSellerProfiles(tx as any, users, provinces, wards);
+        sellerProfileCount = Object.keys(sellerProfiles).length;
+
+        productCount = await seedProducts(tx as any, categories, sellerProfiles, provinces, wards, ocopLevels);
+      },
+      {
+        timeout: 60000,
+      }
+    );
+
+    console.log(`✓ Demo Users seeded (${userCount})`);
+    console.log(`✓ Demo Seller Profiles seeded (${sellerProfileCount})`);
+    console.log(`✓ Demo Products seeded (${productCount})`);
+
+    // 6. Seed Demo News
+    const adminUser = await prisma.user.findFirst({
+      where: { role: { name: 'ADMIN' } },
+    });
+    if (adminUser) {
+      const newsCount = await seedNews(prisma, {
+        [adminUser.email]: adminUser,
+      });
+      console.log(`✓ News seeded (${newsCount})`);
+    }
 
     console.log('\nDatabase seeded successfully.');
   } catch (error: any) {
